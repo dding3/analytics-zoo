@@ -73,3 +73,6 @@ ${SPARK_HOME}/bin/pyspark \
 * Open a browser - Suggest Chrome or Firefox or Safari
 * Access notebook client at address http://localhost:8888, open the example ipynb files and execute. 
 * Access tensorboard client at address http://localhost:6006 and check the charts
+
+## 4 Trouble Shooting
+* Make sure the mac is connected to Internet. If not, I found spark local instance can’t be launch due to a hostname not found error.
