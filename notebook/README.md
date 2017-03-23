@@ -22,7 +22,11 @@ sudo easy_install pip
 ```
 pip install numpy scipy pandas scikit-learn matplotlib seaborn jupyter tensorboard wordcloud 
 ```
-
+* If you have installed jupyter using pip3, you can use below command to install the python 2 kernel
+```
+python2 -m pip install ipykernel
+python2 -m ipykernel install --user
+```
 ###  Required Package Versions
 * Demo is tested to work with  
    * jdk8
