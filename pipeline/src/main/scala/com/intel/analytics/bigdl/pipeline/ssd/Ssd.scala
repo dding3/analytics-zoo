@@ -17,10 +17,12 @@
 package com.intel.analytics.bigdl.pipeline.ssd
 
 import com.intel.analytics.bigdl._
-import com.intel.analytics.bigdl.pipeline.ssd.Ssd._
 import com.intel.analytics.bigdl.nn._
-import com.intel.analytics.bigdl.pipeline.common.nn.{PriorBox, Normalize => SSDNormalize}
 import com.intel.analytics.bigdl.numeric.NumericFloat
+import com.intel.analytics.bigdl.pipeline.common.nn.{PriorBox, Normalize => SSDNormalize}
+import com.intel.analytics.bigdl.pipeline.ssd.Ssd._
+import com.intel.analytics.bigdl.tensor.Storage
+import org.apache.log4j.Logger
 
 /**
  *
@@ -96,7 +98,30 @@ class Ssd(numClasses: Int, resolution: Int,
         addFeatureComponent10(com9)
       }
     }
-    concatResults(model, numClasses)
+    val module = concatResults(model, numClasses)
+    shareMemory(module)
+    module
+  }
+
+
+  def shareMemory(model: Module[Float]): Unit = {
+    logger.info("Share memory in ssd")
+    val shareFinputStorage = Storage[Float]()
+    shareModules(model, shareFinputStorage)
+  }
+
+  def shareModules(module: Module[Float], shareFinputStorage: Storage[Float]): Unit = {
+    Utils.getNamedModules(module)
+    module match {
+      case m: Container[_, _, Float] =>
+        for (m <- module.asInstanceOf[Container[_, _, Float]].modules) {
+          shareModules(m, shareFinputStorage)
+        }
+      case _ =>
+        if (module.getClass.getName.endsWith("SpatialConvolution")) {
+          module.asInstanceOf[SpatialConvolution[Float]].fInput.set(shareFinputStorage)
+        }
+    }
   }
 
   def selectResults(start: Int, dim: Int, nInputDims: Int, name: String): Module[Float] = {
@@ -284,6 +309,8 @@ class Ssd(numClasses: Int, resolution: Int,
 }
 
 object Ssd {
+  val logger = Logger.getLogger(getClass)
+
   def apply(numClasses: Int, resolution: Int,
     basePart1: Sequential[Float], basePart2: Sequential[Float],
     params: Map[String, ComponetParam],
