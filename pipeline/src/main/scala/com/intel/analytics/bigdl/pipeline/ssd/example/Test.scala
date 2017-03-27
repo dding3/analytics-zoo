@@ -33,7 +33,6 @@ object Test {
   case class PascolVocTestParam(folder: String = "",
     modelType: String = "vgg16",
     imageSet: String = "voc_2007_test",
-    resultFolder: String = "/tmp/results",
     caffeDefPath: String = "",
     caffeModelPath: String = "",
     batch: Int = 8,
@@ -46,9 +45,6 @@ object Test {
       .text("where you put the PascolVoc data")
       .action((x, c) => c.copy(folder = x))
       .required()
-    opt[String]('o', "result")
-      .text("where you put the results data")
-      .action((x, c) => c.copy(resultFolder = x))
     opt[String]('t', "modelType")
       .text("net type : VGG16 | PVANET")
       .action((x, c) => c.copy(modelType = x))
