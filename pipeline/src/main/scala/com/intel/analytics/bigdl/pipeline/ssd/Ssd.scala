@@ -53,7 +53,7 @@ class Ssd(numClasses: Int, resolution: Int,
         .add(ConcatTable()
           .add(SSDNormalize(2, scale = normScale).setName("conv4_3_norm"))
           .add(basePart2
-            .add(SpatialDilatedConvolution(params("conv4_3_norm").nInput,
+            .add(SpatialDilatedConvolution(params("fc7").nInput,
               1024, 3, 3, 1, 1, 6, 6, 6, 6).setName("fc6"))
             .add(ReLU(true).setName("relu6"))
             .add(SpatialConvolution(1024, 1024, 1, 1).setName("fc7"))
