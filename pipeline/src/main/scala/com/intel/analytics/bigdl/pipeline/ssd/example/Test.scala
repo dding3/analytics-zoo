@@ -16,9 +16,8 @@
 
 package com.intel.analytics.bigdl.pipeline.ssd.example
 
-import com.intel.analytics.bigdl.pipeline.common.PascalVocEvaluator
+import com.intel.analytics.bigdl.pipeline.common.{CaffeLoader, PascalVocEvaluator}
 import com.intel.analytics.bigdl.pipeline.ssd._
-import com.intel.analytics.bigdl.nn.Module
 import com.intel.analytics.bigdl.utils.Engine
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.SparkContext
@@ -93,9 +92,9 @@ object Test {
         Engine.nodeNumber * Engine.coreNumber, params.folder, sc, hasLabel = true)
 
       val model = params.modelType match {
-        case "vgg16" => Module.loadCaffe(SsdVgg(params.nClass, params.resolution),
+        case "vgg16" => CaffeLoader.load[Float](SsdVgg(params.nClass, params.resolution),
           params.caffeDefPath, params.caffeModelPath)
-        case "alexnet" => Module.loadCaffe(SsdAlexnet(params.nClass, params.resolution),
+        case "alexnet" => CaffeLoader.load[Float](SsdAlexnet(params.nClass, params.resolution),
           params.caffeDefPath, params.caffeModelPath)
       }
 

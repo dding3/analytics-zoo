@@ -17,8 +17,8 @@
 package com.intel.analytics.bigdl.pipeline.ssd.example
 
 import com.intel.analytics.bigdl.dataset.image.Visualizer
+import com.intel.analytics.bigdl.pipeline.common.CaffeLoader
 import com.intel.analytics.bigdl.pipeline.ssd._
-import com.intel.analytics.bigdl.nn.Module
 import com.intel.analytics.bigdl.utils.{Engine, File}
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.SparkContext
@@ -103,9 +103,9 @@ object Demo {
       Engine.init
       val classNames = Source.fromFile(params.classname).getLines().toArray
       val model = params.modelType match {
-        case "vgg16" => Module.loadCaffe(SsdVgg(classNames.length, params.resolution),
+        case "vgg16" => CaffeLoader.load[Float](SsdVgg(classNames.length, params.resolution),
           params.caffeDefPath, params.caffeModelPath)
-        case "alexnet" => Module.loadCaffe(SsdAlexnet(classNames.length, params.resolution),
+        case "alexnet" => CaffeLoader.load[Float](SsdAlexnet(classNames.length, params.resolution),
           params.caffeDefPath, params.caffeModelPath)
       }
 
