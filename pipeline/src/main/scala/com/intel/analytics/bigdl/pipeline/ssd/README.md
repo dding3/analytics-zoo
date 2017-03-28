@@ -96,7 +96,7 @@ train
 tvmonitor
 ```
 
-## Run the demo
+## Run the predict example
 Example command for running in Spark cluster (yarn)
 
 ```
@@ -107,11 +107,11 @@ spark-submit \
 --num-executors 2 \
 --driver-memory 128g \
 --executor-memory 128g \
---class com.intel.analytics.bigdl.pipeline.ssd.example.Demo \
+--class com.intel.analytics.bigdl.pipeline.ssd.example.Predict \
 pipeline-0.1-SNAPSHOT-jar-with-dependencies.jar \
--f $demoDataFolder \
+-f $imageDataFolder \
 --folderType seq \
--o demotestall \
+-o output \
 --caffeDefPath data/models/VGGNet/VOC0712/SSD_300x300/test.prototxt \
 --caffeModelPath data/models/VGGNet/VOC0712/SSD_300x300/VGG_VOC0712_SSD_300x300_iter_120000.caffemodel \
 -t vgg16 \
@@ -123,9 +123,9 @@ pipeline-0.1-SNAPSHOT-jar-with-dependencies.jar \
 
 In the above commands
 
-* -f: where you put your demo data
+* -f: where you put your image data
 * --folderType: It can be seq/local
-* -o: where you put your demo output data
+* -o: where you put your image output data
 * --caffeDefPath: caffe network definition prototxt file path
 * --caffeModelPath: caffe serialized model file path
 * -t: network type, it can be vgg16 or alexnet
@@ -134,7 +134,7 @@ In the above commands
 * -b: batch size
 * -r: input resolution, 300 or 512
 
-## Run the test
+## Run the test example
 
 ```
 spark-submit \
@@ -158,11 +158,11 @@ pipeline-0.1-SNAPSHOT-jar-with-dependencies.jar \
 
 In the above commands
 
-* -f: where you put your demo data
+* -f: where you put your image data
 * --caffeDefPath: caffe network definition prototxt file path
 * --caffeModelPath: caffe serialized model file path
 * -t: network type, it can be vgg16 or alexnet
-* --nclass: number of detection classes
+* --nclass: number of detection classes.
 * -i: image set name with the format ```voc_${year}_${imageset}```, e.g. voc_2007_test
 * -b: batch size
 * -r: input resolution, 300 or 512

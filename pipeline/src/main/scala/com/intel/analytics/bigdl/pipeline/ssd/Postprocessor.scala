@@ -18,7 +18,6 @@ package com.intel.analytics.bigdl.pipeline.ssd
 
 import com.intel.analytics.bigdl.pipeline.common.BboxUtil
 import com.intel.analytics.bigdl.pipeline.common.dataset.roiimage.Target
-import com.intel.analytics.bigdl.pipeline.ssd.Postprocessor._
 import com.intel.analytics.bigdl.pipeline.common.nn.Nms
 import com.intel.analytics.bigdl.tensor.Tensor
 import com.intel.analytics.bigdl.utils.Table
@@ -27,6 +26,7 @@ import org.apache.log4j.Logger
 
 // todo: now only support test mode
 class Postprocessor(param: PostProcessParam) extends Serializable {
+  import Postprocessor._
 
   @transient private var nms: Nms = _
 
@@ -221,11 +221,4 @@ class Postprocessor(param: PostProcessParam) extends Serializable {
 
 object Postprocessor {
   val logger = Logger.getLogger(getClass)
-
-  def apply(param: PostProcessParam): Postprocessor =
-    new Postprocessor(param)
 }
-
-case class PostProcessParam(nClasses: Int = 21, shareLocation: Boolean = true, bgLabel: Int = 0,
-  nmsThresh: Float = 0.45f, nmsTopk: Int = 400, keepTopK: Int = 200, confThresh: Float = 0.01f,
-  varianceEncodedInTarget: Boolean = false)

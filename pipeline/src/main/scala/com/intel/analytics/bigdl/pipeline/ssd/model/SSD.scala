@@ -14,13 +14,12 @@
  * limitations under the License.
  */
 
-package com.intel.analytics.bigdl.pipeline.ssd
+package com.intel.analytics.bigdl.pipeline.ssd.model
 
 import com.intel.analytics.bigdl._
 import com.intel.analytics.bigdl.nn._
 import com.intel.analytics.bigdl.numeric.NumericFloat
 import com.intel.analytics.bigdl.pipeline.common.nn.{PriorBox, Normalize => SSDNormalize}
-import com.intel.analytics.bigdl.pipeline.ssd.Ssd._
 import com.intel.analytics.bigdl.tensor.Storage
 import org.apache.log4j.Logger
 
@@ -40,12 +39,11 @@ case class ComponetParam(nInput: Int, nPreds: Int, minSizes: Array[Float],
   maxSizes: Array[Float], aspectRatios: Array[Float], isFlip: Boolean,
   isClip: Boolean, variances: Array[Float], step: Int = 0)
 
-class Ssd(numClasses: Int, resolution: Int,
-  basePart1: Sequential[Float], basePart2: Sequential[Float],
-  params: Map[String, ComponetParam],
-  isLastPool: Boolean, normScale: Float) {
-
-  def apply(): Module[Float] = {
+object SSD {
+  def apply(numClasses: Int, resolution: Int,
+            basePart1: Sequential[Float], basePart2: Sequential[Float],
+            params: Map[String, ComponetParam],
+            isLastPool: Boolean, normScale: Float) : Module[Float] = {
     val model = Sequential()
     model.add(ConcatTable()
       .add(Sequential()
@@ -65,7 +63,7 @@ class Ssd(numClasses: Int, resolution: Int,
         .add(ConcatTable()
           .add(selectTensor(1, 1).setName("conv4_3_norm_out"))
           .add(SelectTable(2).setName("data")))
-        .add(getPriorBox("conv4_3_norm"))
+        .add(getPriorBox("conv4_3_norm", params))
 
     val conv4_3data = selectTensor(1, 1)
 
@@ -76,26 +74,26 @@ class Ssd(numClasses: Int, resolution: Int,
         .add(ConcatTable()
           .add(fc7data)
           .add(SelectTable(2).setName("data")))
-        .add(getPriorBox("fc7"))
+        .add(getPriorBox("fc7", params))
 
 
 
     val featureComponents = ConcatTable()
       .add(getConcatOutput(conv4_3data, "conv4_3_norm", params("conv4_3_norm").nInput,
-        params("conv4_3_norm").nPreds, conv4_3NormMboxPriorbox))
-      .add(getConcatOutput(fc7data, "fc7", 1024, params("fc7").nPreds, fc7MboxPriorbox))
+        params("conv4_3_norm").nPreds, conv4_3NormMboxPriorbox, numClasses))
+      .add(getConcatOutput(fc7data, "fc7", 1024, params("fc7").nPreds, fc7MboxPriorbox, numClasses))
 
     model.add(featureComponents)
 
-    val com6 = addFeatureComponent6(featureComponents)
-    val com7 = addFeatureComponent7(com6)
-    val com8 = addFeatureComponent8(com7)
+    val com6 = addFeatureComponent6(featureComponents, params, numClasses)
+    val com7 = addFeatureComponent7(com6, params, numClasses)
+    val com8 = addFeatureComponent8(com7, params, numClasses, isLastPool, resolution)
     if (isLastPool) {
-      addFeatureComponentPool6(com8)
+      addFeatureComponentPool6(com8, params, numClasses)
     } else {
-      val com9 = addFeatureComponent9(com8)
+      val com9 = addFeatureComponent9(com8, params, numClasses, resolution)
       if (resolution == 512) {
-        addFeatureComponent10(com9)
+        addFeatureComponent10(com9, params, numClasses)
       }
     }
     val module = concatResults(model, numClasses)
@@ -134,13 +132,14 @@ class Ssd(numClasses: Int, resolution: Int,
     Sequential().add(con).add(JoinTable(dim, nInputDims).setName(name))
   }
 
-  def addComponet(component: Sequential[Float], conv: Sequential[Float], name: String)
+  def addComponet(params: Map[String, ComponetParam],
+                  component: Sequential[Float], conv: Sequential[Float], name: String, numClasses: Int)
   : ConcatTable[Float] = {
     val param = params(name)
     // connect neighbor feature components
     val connection = ConcatTable()
       .add(getConcatOutput(SelectTable[Float](1), name, param.nInput, param.nPreds,
-        getPriorBox(name)))
+        getPriorBox(name, params), numClasses))
 
     component
       .add(ParallelTable()
@@ -152,7 +151,7 @@ class Ssd(numClasses: Int, resolution: Int,
 
 
   def getConcatOutput(input: Module[Float], name: String, nInput: Int, numPreds: Int,
-    priorBox: Module[Float]): ConcatTable[Float] = {
+    priorBox: Module[Float], numClasses: Int): ConcatTable[Float] = {
     ConcatTable()
       .add(getLocConfComponent(input, name, nInput, numPreds * numClasses, "conf"))
       .add(getLocConfComponent(input, name, nInput, numPreds * 4, "loc"))
@@ -197,7 +196,7 @@ class Ssd(numClasses: Int, resolution: Int,
     model
   }
 
-  def addFeatureComponent6(connection: ConcatTable[Float])
+  def addFeatureComponent6(connection: ConcatTable[Float], params: Map[String, ComponetParam], numClasses: Int)
   : ConcatTable[Float] = {
     val component = Sequential()
     connection.add(component)
@@ -207,10 +206,10 @@ class Ssd(numClasses: Int, resolution: Int,
     component.add(ConcatTable()
       .add(selectTensor(1, 2))
       .add(SelectTable(2)))
-    addComponet(component, fc6, "conv6_2")
+    addComponet(params, component, fc6, "conv6_2", numClasses)
   }
 
-  def addFeatureComponent7(connection: ConcatTable[Float])
+  def addFeatureComponent7(connection: ConcatTable[Float], params: Map[String, ComponetParam], numClasses: Int)
   : ConcatTable[Float] = {
     val component = Sequential()
     connection.add(component)
@@ -218,10 +217,11 @@ class Ssd(numClasses: Int, resolution: Int,
     addConvRelu(c7, (512, 128, 1, 1, 0), "7_1")
     addConvRelu(c7, (128, 256, 3, 2, 1), "7_2")
 
-    addComponet(component, c7, "conv7_2")
+    addComponet(params, component, c7, "conv7_2", numClasses)
   }
 
-  def addFeatureComponent8(connection: ConcatTable[Float])
+  def addFeatureComponent8(connection: ConcatTable[Float], params: Map[String, ComponetParam], numClasses: Int,
+                           isLastPool: Boolean, resolution: Int)
   : ConcatTable[Float] = {
     val component = Sequential()
     connection.add(component)
@@ -233,10 +233,11 @@ class Ssd(numClasses: Int, resolution: Int,
       addConvRelu(c8, (128, 256, 3, 1, 0), "8_2")
     }
 
-    addComponet(component, c8, "conv8_2")
+    addComponet(params, component, c8, "conv8_2", numClasses)
   }
 
-  def addFeatureComponent9(connection: ConcatTable[Float]): ConcatTable[Float] = {
+  def addFeatureComponent9(connection: ConcatTable[Float], params: Map[String, ComponetParam], numClasses: Int,
+                           resolution: Int): ConcatTable[Float] = {
     val component = Sequential()
     connection.add(component)
     val c9 = Sequential()
@@ -255,14 +256,14 @@ class Ssd(numClasses: Int, resolution: Int,
           .add(c9)
           .add(Identity().setName("data")))
         .add(getConcatOutput(SelectTable[Float](1), name, param.nInput,
-          param.nPreds, getPriorBox(name)))
+          param.nPreds, getPriorBox(name, params), numClasses))
       null
     } else {
-      addComponet(component, c9, name)
+      addComponet(params, component, c9, name, numClasses)
     }
   }
 
-  def addFeatureComponent10(connection: ConcatTable[Float]): Unit = {
+  def addFeatureComponent10(connection: ConcatTable[Float], params: Map[String, ComponetParam], numClasses: Int): Unit = {
     val component = Sequential()
     connection.add(component)
     val c10 = Sequential()
@@ -277,16 +278,16 @@ class Ssd(numClasses: Int, resolution: Int,
         .add(c10)
         .add(Identity().setName("data")))
       .add(getConcatOutput(SelectTable[Float](1), name, param.nInput,
-        param.nPreds, getPriorBox(name)))
+        param.nPreds, getPriorBox(name, params), numClasses))
   }
 
-  def addFeatureComponentPool6(connection: ConcatTable[Float])
+  def addFeatureComponentPool6(connection: ConcatTable[Float], params: Map[String, ComponetParam], numClasses: Int)
   : Unit = {
     val component = Sequential()
     connection.add(component)
 
     val name = "pool6"
-    val pool6priorbox = getPriorBox(name)
+    val pool6priorbox = getPriorBox(name, params)
 
     val param = params(name)
 
@@ -295,10 +296,10 @@ class Ssd(numClasses: Int, resolution: Int,
         .add(SpatialAveragePooling(3, 3).setName(name))
         .add(Identity().setName("data")))
       .add(getConcatOutput(SelectTable[Float](1), name,
-        param.nInput, param.nPreds, pool6priorbox))
+        param.nInput, param.nPreds, pool6priorbox, numClasses))
   }
 
-  private def getPriorBox(name: String): PriorBox[Float] = {
+  private def getPriorBox(name: String, params: Map[String, ComponetParam]): PriorBox[Float] = {
     val param = params(name)
     PriorBox[Float](minSizes = param.minSizes, maxSizes = param.maxSizes,
       _aspectRatios = param.aspectRatios, isFlip = param.isFlip, isClip = param.isClip,
@@ -306,19 +307,11 @@ class Ssd(numClasses: Int, resolution: Int,
       .setName(s"${ name }_mbox_priorbox")
   }
 
-}
 
-object Ssd {
-  val logger = Logger.getLogger(getClass)
+  private val logger = Logger.getLogger(getClass)
 
-  def apply(numClasses: Int, resolution: Int,
-    basePart1: Sequential[Float], basePart2: Sequential[Float],
-    params: Map[String, ComponetParam],
-    normScale: Float, isLastPool: Boolean): Module[Float] =
-    new Ssd(numClasses, resolution, basePart1, basePart2, params, isLastPool, normScale).apply()
-
-  def addConvRelu(model: Sequential[Float], p: (Int, Int, Int, Int, Int),
-    name: String, prefix: String = "conv", nGroup: Int = 1): Unit = {
+  private[pipeline] def addConvRelu(model: Sequential[Float], p: (Int, Int, Int, Int, Int),
+                  name: String, prefix: String = "conv", nGroup: Int = 1): Unit = {
     model.add(new SpatialConvolution(p._1, p._2, p._3, p._3, p._4, p._4,
       p._5, p._5, nGroup = nGroup).setName(s"$prefix$name"))
     model.add(ReLU(true).setName(s"relu$name"))

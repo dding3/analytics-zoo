@@ -17,45 +17,45 @@
 package com.intel.analytics.bigdl.pipeline.ssd
 
 import com.intel.analytics.bigdl.Module
-import com.intel.analytics.bigdl.pipeline.common.dataset.roiimage.{MiniBatch, Target}
-import com.intel.analytics.bigdl.pipeline.ssd.Predictor._
+import com.intel.analytics.bigdl.dataset.Transformer
+import com.intel.analytics.bigdl.pipeline.common.dataset.roiimage._
 import com.intel.analytics.bigdl.models.utils.ModelBroadcast
 import com.intel.analytics.bigdl.numeric.NumericFloat
-import com.intel.analytics.bigdl.utils.Engine
-import org.apache.log4j.Logger
 import org.apache.spark.rdd.RDD
 
+class Predictor(
+    model: Module[Float],
+    preProcessParam: PreProcessParam,
+    postProcessParam: PostProcessParam) {
 
-class Predictor(model: Module[Float], param: PostProcessParam) {
-  val postProcessor = Postprocessor(param)
+  val preProcessor =
+    RoiImageResizer(Array(preProcessParam.resolution), resizeRois = false, isEqualResize = true) ->
+      RoiImageNormalizer(preProcessParam.pixelMeanRGB) ->
+      RoiimageToBatch(preProcessParam.batchSize, false)
 
-  def test(rdd: RDD[MiniBatch[Float]]): Array[Array[Target]] = {
-    model.evaluate()
-    val broadcastModel = ModelBroadcast().broadcast(rdd.sparkContext, model)
-    val broadpostprocessor = rdd.sparkContext.broadcast(postProcessor)
-    val recordsNum = rdd.sparkContext.accumulator(0, "record number")
-    val start = System.nanoTime()
-    val output = rdd.mapPartitions(dataIter => {
-      val localModel = broadcastModel.value()
-      val localPostProcessor = broadpostprocessor.value.clone()
-      dataIter.map(batch => {
-        val result = localModel.forward(batch.data).toTable
-        recordsNum += batch.data.size(1)
-        localPostProcessor.process(result, batch.imInfo)
-      })
-    }).collect().flatten
-    val totalTime = (System.nanoTime() - start) / 1e9
-    logger.info(s"[Prediction] ${ recordsNum.value } in $totalTime seconds. Throughput is ${
-      recordsNum.value / totalTime
-    } record / sec")
-    output
+  val postProcessor = new Postprocessor(postProcessParam)
+
+  def predict(rdd: RDD[RoiByteImage]): RDD[Array[Target]] = {
+    Predictor.predict(rdd, model, preProcessor, postProcessor)
   }
 }
 
 object Predictor {
-  val logger = Logger.getLogger(this.getClass)
-
-  def apply(model: Module[Float], param: PostProcessParam)
-  : Predictor = new Predictor(model, param)
+  def predict(rdd: RDD[RoiByteImage],
+              model: Module[Float],
+              preProcessor: Transformer[RoiByteImage, MiniBatch[Float]],
+              postProcessor: Postprocessor
+             ): RDD[Array[Target]] = {
+    model.evaluate()
+    val broadcastModel = ModelBroadcast().broadcast(rdd.sparkContext, model)
+    val broadpostprocessor = rdd.sparkContext.broadcast(postProcessor)
+    rdd.mapPartitions(preProcessor(_)).mapPartitions(dataIter => {
+      val localModel = broadcastModel.value()
+      val localPostProcessor = broadpostprocessor.value.clone()
+      dataIter.map(batch => {
+        val result = localModel.forward(batch.data).toTable
+        localPostProcessor.process(result, batch.imInfo)
+      }).flatten
+    })
+  }
 }
-

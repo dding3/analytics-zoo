@@ -14,14 +14,14 @@
  * limitations under the License.
  */
 
-package com.intel.analytics.bigdl.pipeline.ssd
+package com.intel.analytics.bigdl.pipeline.ssd.model
 
 import com.intel.analytics.bigdl.Module
-import com.intel.analytics.bigdl.pipeline.ssd.Ssd._
 import com.intel.analytics.bigdl.nn._
 import com.intel.analytics.bigdl.numeric.NumericFloat
+import SSD._
 
-object SsdAlexnet {
+object SSDAlexNet {
 
   def alexnetPart1(): Sequential[Float] = {
     val model = Sequential()
@@ -67,7 +67,7 @@ object SsdAlexnet {
       params += "pool6" -> ComponetParam(256, 6, minSizes = Array(276f),
         maxSizes = Array(330f), aspectRatios, isFlip, isClip, variances, step)
 
-      val model = Ssd(numClasses, resolution = 300, alexnetPart1(), alexnetPart2(),
+      val model = SSD(numClasses, resolution = 300, alexnetPart1(), alexnetPart2(),
         params, isLastPool = true, normScale = 19.9096f)
       val namedModules = Utils.getNamedModules(model)
       namedModules("fc6").setName("fc6-conv")

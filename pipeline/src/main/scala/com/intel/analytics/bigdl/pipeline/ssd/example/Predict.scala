@@ -19,6 +19,7 @@ package com.intel.analytics.bigdl.pipeline.ssd.example
 import com.intel.analytics.bigdl.dataset.image.Visualizer
 import com.intel.analytics.bigdl.pipeline.common.CaffeLoader
 import com.intel.analytics.bigdl.pipeline.ssd._
+import com.intel.analytics.bigdl.pipeline.ssd.model.{SSDAlexNet, SSDVgg}
 import com.intel.analytics.bigdl.utils.{Engine, File}
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.SparkContext
@@ -26,7 +27,7 @@ import scopt.OptionParser
 
 import scala.io.Source
 
-object Demo {
+object Predict {
   Logger.getLogger("org").setLevel(Level.ERROR)
   Logger.getLogger("akka").setLevel(Level.ERROR)
   Logger.getLogger("breeze").setLevel(Level.ERROR)
@@ -97,40 +98,44 @@ object Demo {
   def main(args: Array[String]): Unit = {
     parser.parse(args, PascolVocDemoParam()).foreach { params =>
       val conf = Engine.createSparkConf().setAppName("Spark-DL SSD Demo")
-        .set("spark.akka.frameSize", 64.toString)
-        .set("spark.task.maxFailures", "1")
       val sc = new SparkContext(conf)
       Engine.init
       val classNames = Source.fromFile(params.classname).getLines().toArray
       val model = params.modelType match {
-        case "vgg16" => CaffeLoader.load[Float](SsdVgg(classNames.length, params.resolution),
+        case "vgg16" => CaffeLoader.load[Float](SSDVgg(classNames.length, params.resolution),
           params.caffeDefPath, params.caffeModelPath)
-        case "alexnet" => CaffeLoader.load[Float](SsdAlexnet(classNames.length, params.resolution),
+        case "alexnet" => CaffeLoader.load[Float](SSDAlexNet(classNames.length, params.resolution),
           params.caffeDefPath, params.caffeModelPath)
+        case _ => throw new IllegalArgumentException(s"invalid model name ${params.modelType}")
       }
-
-      File.save(model, params.caffeDefPath.
-        substring(0, params.caffeDefPath.lastIndexOf(".")) + ".bigdl", true)
       val nPartition = Engine.nodeNumber * Engine.coreNumber
-      val (minibatch, imagePaths) = params.folderType match {
-        case "local" => Preprocessor.processFolder(params.resolution, params.batch, nPartition,
-          params.imageFolder, sc)
-        case "seq" => Preprocessor.processSeqFile(params.resolution, params.batch, nPartition,
-          params.imageFolder, sc, hasLabel = false)
+      val data = params.folderType match {
+        case "local" => IOUtils.loadLocalFolder(nPartition, params.imageFolder, sc)
+        case "seq" => IOUtils.loadSeqFiles(nPartition, params.imageFolder, sc)
+        case _ => throw new IllegalArgumentException(s"invalid folder name ${params.folderType}")
       }
 
-      val predictor = Predictor(model, PostProcessParam(classNames.length))
-      val output = predictor.test(minibatch)
+      val predictor = new Predictor(model,
+        PreProcessParam(params.batch, params.resolution, (123f, 117f, 104f), false),
+        PostProcessParam(classNames.length))
+
+      val start = System.nanoTime()
+      val output = predictor.predict(data).collect()
+      val recordsNum = output.length
+      val totalTime = (System.nanoTime() - start) / 1e9
+      logger.info(s"[Prediction] ${ recordsNum } in $totalTime seconds. Throughput is ${
+        recordsNum / totalTime
+      } record / sec")
 
       if (params.vis) {
-        imagePaths.zipWithIndex.foreach(pair => {
-          var clsInd = 1
+        IOUtils.localImagePaths(params.imageFolder).zipWithIndex.foreach(pair => {
+          var classIndex = 1
           val imgId = pair._2.toInt
-          while (clsInd < classNames.length) {
-            Visualizer.visDetection(pair._1, classNames(clsInd),
-              output(imgId)(clsInd).classes,
-              output(imgId)(clsInd).bboxes, thresh = 0.6f, outPath = params.outputFolder)
-            clsInd += 1
+          while (classIndex < classNames.length) {
+            Visualizer.visDetection(pair._1, classNames(classIndex),
+              output(imgId)(classIndex).classes,
+              output(imgId)(classIndex).bboxes, thresh = 0.6f, outPath = params.outputFolder)
+            classIndex += 1
           }
         })
         logger.info(s"labeled images are saved to ${ params.outputFolder }")

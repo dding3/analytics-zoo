@@ -14,14 +14,14 @@
  * limitations under the License.
  */
 
-package com.intel.analytics.bigdl.pipeline.ssd
+package com.intel.analytics.bigdl.pipeline.ssd.model
 
 import com.intel.analytics.bigdl._
-import com.intel.analytics.bigdl.pipeline.ssd.Ssd._
 import com.intel.analytics.bigdl.nn._
 import com.intel.analytics.bigdl.numeric.NumericFloat
+import SSD._
 
-object SsdVgg {
+object SSDVgg {
 
   private def vgg16Part1(): Sequential[Float] = {
     val vggNetPart1 = Sequential()
@@ -73,7 +73,7 @@ object SsdVgg {
         aspectRatios = Array(2), isFlip, isClip, variances, 100)
       params += "conv9_2" -> ComponetParam(256, 4, minSizes = Array(264), maxSizes = Array(315),
         aspectRatios = Array(2), isFlip, isClip, variances, 300)
-      Ssd(numClasses, resolution, vgg16Part1(), vgg16Part2(), params, normScale = 13.25217724f,
+      SSD(numClasses, resolution, vgg16Part1(), vgg16Part2(), params, normScale = 13.25217724f,
         isLastPool = false)
     } else {
       params += "conv4_3_norm" -> ComponetParam(512, 4, minSizes = Array(35.84f),
@@ -90,7 +90,7 @@ object SsdVgg {
         maxSizes = Array(460.8f), aspectRatios = Array(2), isFlip, isClip, variances, 256)
       params += "conv10_2" -> ComponetParam(256, 4, minSizes = Array(460.8f),
         maxSizes = Array(537.6f), aspectRatios = Array(2), isFlip, isClip, variances, 512)
-      Ssd(numClasses, resolution, vgg16Part1(), vgg16Part2(), params, normScale = 12.0166f,
+      SSD(numClasses, resolution, vgg16Part1(), vgg16Part2(), params, normScale = 12.0166f,
         isLastPool = false)
     }
   }

@@ -23,8 +23,8 @@ import scala.collection.Iterator
 import scala.collection.mutable.ArrayBuffer
 
 object RoiimageToBatch {
-  def apply(batchSize: Int, toRGB: Boolean = true, convertLabel: Boolean = true): RoiimageToBatch
-  = new RoiimageToBatch(batchSize, toRGB, convertLabel)
+  def apply(batchSize: Int, convertLabel: Boolean = true): RoiimageToBatch
+  = new RoiimageToBatch(batchSize, convertLabel)
 }
 
 /**
@@ -33,9 +33,8 @@ object RoiimageToBatch {
  * Notice: The totalBatch means a total batch size. In distributed environment, the batch should be
  * divided by total core number
  * @param batchSize
- * @param toRGB
  */
-class RoiimageToBatch(batchSize: Int, toRGB: Boolean = true, convertLabel: Boolean = true)
+class RoiimageToBatch(batchSize: Int, convertLabel: Boolean = true)
   extends Transformer[RoiImage, MiniBatch[Float]] {
 
   override def apply(prev: Iterator[RoiImage]): Iterator[MiniBatch[Float]] = {
@@ -67,7 +66,7 @@ class RoiimageToBatch(batchSize: Int, toRGB: Boolean = true, convertLabel: Boole
                 labelData = new ArrayBuffer[Float]()
               }
             }
-            img.copyTo(featureData, i * img.width() * img.height() * 3, toRGB)
+            img.copyTo(featureData, i * img.width() * img.height() * 3, false)
             imInfoData(i * 4) = img.imInfo.valueAt(1)
             imInfoData(i * 4 + 1) = img.imInfo.valueAt(2)
             imInfoData(i * 4 + 2) = img.imInfo.valueAt(3)

@@ -18,6 +18,7 @@ package com.intel.analytics.bigdl.pipeline.ssd.example
 
 import com.intel.analytics.bigdl.pipeline.common.{CaffeLoader, PascalVocEvaluator}
 import com.intel.analytics.bigdl.pipeline.ssd._
+import com.intel.analytics.bigdl.pipeline.ssd.model.{SSDAlexNet, SSDVgg}
 import com.intel.analytics.bigdl.utils.Engine
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.SparkContext
@@ -77,25 +78,23 @@ object Test {
   def main(args: Array[String]) {
     parser.parse(args, PascolVocTestParam()).foreach { params =>
       val conf = Engine.createSparkConf().setAppName("Spark-DL SSD Test")
-        .set("spark.akka.frameSize", 64.toString)
-        .set("spark.task.maxFailures", "1")
       val sc = new SparkContext(conf)
       Engine.init
 
       val evaluator = new PascalVocEvaluator(params.imageSet)
 
-      val rdd = Preprocessor.processSeqFile(params.resolution, params.batch,
-        Engine.nodeNumber * Engine.coreNumber, params.folder, sc, hasLabel = true)
+      val rdd = IOUtils.loadSeqFiles( Engine.nodeNumber * Engine.coreNumber, params.folder, sc)
 
       val model = params.modelType match {
-        case "vgg16" => CaffeLoader.load[Float](SsdVgg(params.nClass, params.resolution),
+        case "vgg16" => CaffeLoader.load[Float](SSDVgg(params.nClass, params.resolution),
           params.caffeDefPath, params.caffeModelPath)
-        case "alexnet" => CaffeLoader.load[Float](SsdAlexnet(params.nClass, params.resolution),
+        case "alexnet" => CaffeLoader.load[Float](SSDAlexNet(params.nClass, params.resolution),
           params.caffeDefPath, params.caffeModelPath)
       }
 
-      val validator = Validator(model, PostProcessParam(params.nClass), evaluator)
-      validator.test(rdd._1)
+      val validator = new Validator(model, PreProcessParam(params.batch, params.resolution, (123f, 117f, 104f), true),
+        PostProcessParam(params.nClass), evaluator)
+      validator.test(rdd)
     }
   }
 }

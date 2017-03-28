@@ -17,29 +17,45 @@
 package com.intel.analytics.bigdl.pipeline.ssd
 
 import com.intel.analytics.bigdl.Module
-import com.intel.analytics.bigdl.pipeline.common.{DetectionEvaluator}
-import com.intel.analytics.bigdl.pipeline.common.dataset.roiimage.MiniBatch
-import com.intel.analytics.bigdl.pipeline.ssd.Validator._
+import com.intel.analytics.bigdl.dataset.Transformer
+import com.intel.analytics.bigdl.pipeline.common.DetectionEvaluator
+import com.intel.analytics.bigdl.pipeline.common.dataset.roiimage._
 import com.intel.analytics.bigdl.models.utils.ModelBroadcast
 import com.intel.analytics.bigdl.numeric.NumericFloat
-import com.intel.analytics.bigdl.utils.Engine
 import org.apache.log4j.Logger
 import org.apache.spark.rdd.RDD
 
 
-class Validator(model: Module[Float], param: PostProcessParam,
-  evaluator: DetectionEvaluator) {
+class Validator(model: Module[Float],
+                preProcessParam: PreProcessParam,
+                postProcessParam: PostProcessParam,
+                evaluator: DetectionEvaluator
+               ) {
+  val preProcessor =
+    RoiImageResizer(Array(preProcessParam.resolution), resizeRois = false, isEqualResize = true) ->
+      RoiImageNormalizer(preProcessParam.pixelMeanRGB) ->
+      RoiimageToBatch(preProcessParam.batchSize, true)
 
-  val postProcessor = Postprocessor(param)
+  val postProcessor = new Postprocessor(postProcessParam)
 
-  def test(rdd: RDD[MiniBatch[Float]]): Array[(String, Double)] = {
+  def test(rdd: RDD[RoiByteImage]): Array[(String, Double)] = {
+    Validator.test(rdd, model, preProcessor, postProcessor, evaluator)
+  }
+}
+
+object Validator {
+  val logger = Logger.getLogger(this.getClass)
+
+  def test(rdd: RDD[RoiByteImage], model: Module[Float], preProcessor: Transformer[RoiByteImage, MiniBatch[Float]],
+           postProcessor: Postprocessor,
+           evaluator: DetectionEvaluator): Array[(String, Double)] = {
     model.evaluate()
     val broadcastModel = ModelBroadcast().broadcast(rdd.sparkContext, model)
     val broadpostprocessor = rdd.sparkContext.broadcast(postProcessor)
     val broadcastEvaluator = rdd.sparkContext.broadcast(evaluator)
     val recordsNum = rdd.sparkContext.accumulator(0, "record number")
     val start = System.nanoTime()
-    val output = rdd.mapPartitions(dataIter => {
+    val output = rdd.mapPartitions(preProcessor(_)).mapPartitions(dataIter => {
       val localModel = broadcastModel.value()
       val localPostProcessor = broadpostprocessor.value.clone()
       val localEvaluator = broadcastEvaluator.value
@@ -62,11 +78,3 @@ class Validator(model: Module[Float], param: PostProcessParam,
     evaluator.map(output)
   }
 }
-
-object Validator {
-  val logger = Logger.getLogger(this.getClass)
-
-  def apply(model: Module[Float], param: PostProcessParam, evaluator: DetectionEvaluator)
-  : Validator = new Validator(model, param, evaluator)
-}
-
