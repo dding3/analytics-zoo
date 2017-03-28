@@ -38,6 +38,7 @@ $VOCdevkit/VOC2007                    # image sets, annotations, etc.
 Get the bigdl.sh script 
 ```
 wget https://raw.githubusercontent.com/intel-analytics/BigDL/master/scripts/bigdl.sh
+source bigdl.sh
 ```
 
 ### convert labeled pascal voc dataset
@@ -69,11 +70,37 @@ https://github.com/weiliu89/caffe/tree/ssd#models
 
 07+12: SSD300, SSD512
 
+## Prepare a file contain list of class name
+Save the follow content to classname.txt
+```
+__background__
+aeroplane
+bicycle
+bird
+boat
+bottle
+bus
+car
+cat
+chair
+cow
+diningtable
+dog
+horse
+motorbike
+person
+pottedplant
+sheep
+sofa
+train
+tvmonitor
+```
+
 ## Run the demo
 Example command for running in Spark cluster (yarn)
 
 ```
-dist/bin/bigdl.sh -- spark-submit \
+spark-submit \
 --master yarn \
 --deploy-mode client \
 --executor-cores 28 \
@@ -110,7 +137,7 @@ In the above commands
 ## Run the test
 
 ```
-dist/bin/bigdl.sh -- spark-submit \
+spark-submit \
 --master yarn \
 --deploy-mode client \
 --executor-cores 28 \
