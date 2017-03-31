@@ -41,7 +41,7 @@ python2 -m ipykernel install --user
 tensorboard --logdir=/tmp/bigdl_summaries
 ```
 * Create start_notebook.sh, copy and paste the contents below, and edit SPARK_HOME, BigDL_HOME accordingly. Change other parameter settings as you need. 
-```
+```bash
 #!/bin/bash
 
 #setup pathes
@@ -55,21 +55,25 @@ MASTER="local[4]"
 PYTHON_API_ZIP_PATH=${BigDL_HOME}/dist/lib/bigdl-0.1.0-SNAPSHOT-python-api.zip
 BigDL_JAR_PATH=${BigDL_HOME}/dist/lib/bigdl-0.1.0-SNAPSHOT-jar-with-dependencies.jar
 
+source ${BigDL_HOME}/dist/bin/bigdl.sh
+
 export PYTHONPATH=${PYTHON_API_ZIP_PATH}:$PYTHONPATH
-export IPYTHON_OPTS="notebook --notebook-dir=./  --ip=* --no-browser --NotebookApp.token=''"
+export PYSPARK_DRIVER_PYTHON=jupyter
+export PYSPARK_DRIVER_PYTHON_OPTS="notebook --notebook-dir=./  --ip=* --no-browser --NotebookApp.token=''"
 
 ${SPARK_HOME}/bin/pyspark \
-    --master ${MASTER} \
-    --driver-cores 4  \
-   --driver-memory 10g  \
-   --total-executor-cores 4  \
-   --executor-cores 1  \
-   --executor-memory 10g \
-   --conf spark.akka.frameSize=64 \
-    --py-files ${PYTHON_API_ZIP_PATH} \
-    --jars ${BigDL_JAR_PATH} \
-    --conf spark.driver.extraClassPath=${BigDL_JAR_PATH} \
-    --conf spark.executor.extraClassPath=bigdl-0.1.0-SNAPSHOT-jar-with-dependencies.jar
+       --master ${MASTER} \
+       --properties-file ${BigDL_HOME}/dist/conf/spark-bigdl.conf \
+       --driver-cores 5  \
+      --driver-memory 10g  \
+      --total-executor-cores 8  \
+      --executor-cores 1  \
+      --executor-memory 20g \
+      --conf spark.akka.frameSize=64 \
+       --py-files ${PYTHON_API_ZIP_PATH} \
+       --jars ${BigDL_JAR_PATH} \
+       --conf spark.driver.extraClassPath=${BigDL_JAR_PATH} \
+       --conf spark.executor.extraClassPath=bigdl-0.1.0-SNAPSHOT-jar-with-dependencies.jar
 ```
 * Put start_notebook.sh and start_tensorboard.sh in home directory and execute them in bash. 
     * the root directory in your notebook view is the directory where you execute the script start_notebook. 
