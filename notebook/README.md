@@ -65,11 +65,11 @@ ${SPARK_HOME}/bin/pyspark \
        --master ${MASTER} \
        --properties-file ${BigDL_HOME}/dist/conf/spark-bigdl.conf \
        --driver-cores 5  \
-      --driver-memory 10g  \
-      --total-executor-cores 8  \
-      --executor-cores 1  \
-      --executor-memory 20g \
-      --conf spark.akka.frameSize=64 \
+       --driver-memory 10g  \
+       --total-executor-cores 8  \
+       --executor-cores 1  \
+       --executor-memory 20g \
+       --conf spark.akka.frameSize=64 \
        --py-files ${PYTHON_API_ZIP_PATH} \
        --jars ${BigDL_JAR_PATH} \
        --conf spark.driver.extraClassPath=${BigDL_JAR_PATH} \
