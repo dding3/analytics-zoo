@@ -108,6 +108,7 @@
             <artifactId>bigdl</artifactId>
             <version>0.2.0-SNAPSHOT</version>
         </dependency>
+
         <dependency>
             <groupId>org.apache.spark</groupId>
             <artifactId>spark-core_${scala.major.version}</artifactId>
@@ -175,23 +176,6 @@
                             <version>${scala.macros.version}</version>
                         </compilerPlugin>
                     </compilerPlugins>
-                </configuration>
-            </plugin>
-
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-shade-plugin</artifactId>
-                <version>3.0.0</version>
-                <executions>
-                    <execution>
-                        <phase>package</phase>
-                        <goals>
-                            <goal>shade</goal>
-                        </goals>
-                    </execution>
-                </executions>
-                <configuration>
-                    <minimizeJar>true</minimizeJar>
                 </configuration>
             </plugin>
 

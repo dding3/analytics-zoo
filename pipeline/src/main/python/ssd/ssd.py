@@ -1,6 +1,5 @@
 from nn.layer import *
 
-
 class Test(Model):
     """
     >>> test = Test("myworld")
@@ -21,13 +20,14 @@ def _test():
     from pyspark import SparkContext
     from util.common import init_engine
     from util.common import create_spark_conf
+    from util.common import JavaCreator
     import ssd
     globs = ssd.__dict__.copy()
     sc = SparkContext(master="local[4]", appName="test layer",
                       conf=create_spark_conf())
     globs['sc'] = sc
+    JavaCreator.set_creator_class("com.intel.analytics.bigdl.python.api.SSDPythonBigDL")  # noqa
     init_engine()
-
     (failure_count, test_count) = doctest.testmod(globs=globs,
                                                   optionflags=doctest.ELLIPSIS)
     if failure_count:
