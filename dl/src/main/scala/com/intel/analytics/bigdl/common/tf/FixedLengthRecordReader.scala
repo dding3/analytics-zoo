@@ -15,8 +15,7 @@
  */
 package com.intel.analytics.bigdl.utils.tf
 
-import java.io.{BufferedInputStream, File, FileInputStream}
-import java.nio.{ByteBuffer, ByteOrder}
+import java.io.{File, FileInputStream}
 
 /**
  * Internal use only.
@@ -28,32 +27,27 @@ import java.nio.{ByteBuffer, ByteOrder}
  *  uint32 masked_crc32_of_data
  *
  */
-class TFRecordIterator(fileName: File) extends Iterator[Array[Byte]] {
+class FixedLengthRecordReader(fileName: File,
+                              footerBytes: Int,
+                              headerBytes: Int,
+                              hopBytes: Int,
+                              recordBytes: Int) extends Iterator[Array[Byte]] {
 
   private val inputStream = new FileInputStream(fileName)
 
   private var dataBuffer: Array[Byte] = null
 
-  private val lengthBuffer: Array[Byte] = new Array[Byte](8)
-
+  inputStream.skip(headerBytes)
 
 
   override def hasNext: Boolean = {
     if (dataBuffer != null) {
       true
     } else {
-      val numOfBytes = inputStream.read(lengthBuffer)
-      if (numOfBytes == 8) {
-        val lengthWrapper = ByteBuffer.wrap(lengthBuffer)
-        lengthWrapper.order(ByteOrder.LITTLE_ENDIAN)
-        val length = lengthWrapper.getLong().toInt
-        // todo, do crc check, simply skip now
-        inputStream.skip(4)
-
-        dataBuffer = new Array[Byte](length)
-        inputStream.read(dataBuffer)
-        // todo, do crc check, simply skip now
-        inputStream.skip(4)
+      dataBuffer = new Array[Byte](recordBytes)
+      val numOfBytes = inputStream.read(dataBuffer)
+      if (numOfBytes == recordBytes) {
+        inputStream.skip(hopBytes)
         true
       } else {
         inputStream.close()

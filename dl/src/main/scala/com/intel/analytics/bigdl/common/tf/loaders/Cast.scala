@@ -18,24 +18,33 @@ package com.intel.analytics.bigdl.utils.tf.loaders
 import java.nio.ByteOrder
 
 import com.intel.analytics.bigdl.Module
-import com.intel.analytics.bigdl.nn.Identity
-import com.intel.analytics.bigdl.nn.ops.Prod
-import com.intel.analytics.bigdl.tensor.Tensor
+import com.intel.analytics.bigdl.nn.ops.Cast
 import com.intel.analytics.bigdl.tensor.TensorNumericMath.TensorNumeric
-import org.tensorflow.framework.NodeDef
+import org.tensorflow.framework.{DataType, NodeDef}
 
 import scala.reflect.ClassTag
 
-class Prod extends TensorflowOpsLoader {
+class Cast extends TensorflowOpsLoader {
 
   import Utils._
 
   override def build[T: ClassTag](nodeDef: NodeDef, byteOrder: ByteOrder)
-    (implicit ev: TensorNumeric[T]): Module[T] = {
-    Adapter[T](Array(2), tensorArrays => {
-      val axis = tensorArrays(0).asInstanceOf[Tensor[Int]].value() + 1
-      val keepDims = getBoolean(nodeDef.getAttrMap, "keep_dims")
-      Prod[T](axis)
-    })
+                                 (implicit ev: TensorNumeric[T]): Module[T] = {
+    val attr = nodeDef.getAttrMap
+    val dataType = getType(attr, "DstT")
+
+    val layer = dataType match {
+      case DataType.DT_INT8 => Cast[T, Int]()
+      case DataType.DT_INT16 => Cast[T, Int]()
+      case DataType.DT_UINT8 => Cast[T, Int]()
+      case DataType.DT_UINT16 => Cast[T, Int]()
+      case DataType.DT_INT32 => Cast[T, Int]()
+      case DataType.DT_INT64 => Cast[T, Int]()
+      case DataType.DT_BOOL => Cast[T, Boolean]()
+      case DataType.DT_STRING => Cast[T, String]()
+      case DataType.DT_FLOAT => Cast[T, Float]()
+      case DataType.DT_DOUBLE => Cast[T, Double]()
+    }
+    layer
   }
 }

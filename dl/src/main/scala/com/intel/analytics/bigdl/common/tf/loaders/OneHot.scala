@@ -14,28 +14,25 @@
  * limitations under the License.
  */
 package com.intel.analytics.bigdl.utils.tf.loaders
-
 import java.nio.ByteOrder
 
 import com.intel.analytics.bigdl.Module
-import com.intel.analytics.bigdl.nn.Identity
-import com.intel.analytics.bigdl.nn.ops.Prod
-import com.intel.analytics.bigdl.tensor.Tensor
+import com.intel.analytics.bigdl.nn.Power
+import com.intel.analytics.bigdl.nn.ops.{OneHot => OneHotOp}
 import com.intel.analytics.bigdl.tensor.TensorNumericMath.TensorNumeric
+import com.intel.analytics.bigdl.utils.tf.loaders.{TensorflowOpsLoader, Utils}
 import org.tensorflow.framework.NodeDef
 
 import scala.reflect.ClassTag
 
-class Prod extends TensorflowOpsLoader {
+class OneHot extends TensorflowOpsLoader {
 
   import Utils._
 
   override def build[T: ClassTag](nodeDef: NodeDef, byteOrder: ByteOrder)
-    (implicit ev: TensorNumeric[T]): Module[T] = {
-    Adapter[T](Array(2), tensorArrays => {
-      val axis = tensorArrays(0).asInstanceOf[Tensor[Int]].value() + 1
-      val keepDims = getBoolean(nodeDef.getAttrMap, "keep_dims")
-      Prod[T](axis)
-    })
+                                 (implicit ev: TensorNumeric[T]): Module[T] = {
+
+    val axis = getInt(nodeDef.getAttrMap, "axis")
+    OneHotOp(axis)
   }
 }
