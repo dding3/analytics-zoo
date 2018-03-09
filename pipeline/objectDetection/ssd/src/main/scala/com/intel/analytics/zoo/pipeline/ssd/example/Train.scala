@@ -20,6 +20,7 @@ import com.intel.analytics.bigdl._
 import com.intel.analytics.bigdl.dataset.MiniBatch
 import com.intel.analytics.bigdl.nn.Module
 import com.intel.analytics.bigdl.optim.{Optimizer, _}
+import com.intel.analytics.bigdl.optim.SGD._
 import com.intel.analytics.bigdl.pipeline.ssd.Utils
 import com.intel.analytics.zoo.pipeline.common.nn.{MultiBoxLoss, MultiBoxLossParam}
 import com.intel.analytics.zoo.pipeline.common.MeanAveragePrecision
@@ -196,17 +197,25 @@ object Train {
             val steps = if (param.learningRateSteps.isDefined) {
               param.learningRateSteps.get
             } else {
-              Array[Int](80000 / 32 * param.batchSize, 100000 / 32 * param.batchSize,
-                120000 / 32 * param.batchSize)
+              Array[Int](80000 * 32 / param.batchSize, 100000 * 32 / param.batchSize,
+                120000 * 32 / param.batchSize)
             }
-            SGD.MultiStep(steps, param.learningRateDecay)
+            val lrSchedules = new SequentialSchedule(74)
+            val delta = (param.learningRate - 0.001) / 370
+            lrSchedules.add(Warmup(delta), 370).add(SGD.MultiStep(steps, param.learningRateDecay),
+              param.maxEpoch.get * 74)
+            lrSchedules
           case "plateau" =>
-            SGD.Plateau(monitor = "score",
+            val lrSchedules = new SequentialSchedule(74)
+            val delta = (param.learningRate - 0.001) / 370
+            lrSchedules.add(Warmup(delta), 370).add(SGD.Plateau(monitor = "score",
               factor = param.learningRateDecay.toFloat,
-              patience = param.patience, minLr = 1e-5f, mode = "max")
+              patience = param.patience, minLr = 1e-5f, mode = "max"), param.maxEpoch.get * 74)
+            lrSchedules
         }
         new SGD[Float](
-          learningRate = param.learningRate,
+//          learningRate = param.learningRate,
+          learningRate = 0.001,
           momentum = 0.9,
           dampening = 0.0,
           learningRateSchedule = learningRateSchedule)
