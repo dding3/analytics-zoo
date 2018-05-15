@@ -27,8 +27,8 @@ class ImagePreprocessing(Preprocessing):
     """
     ImagePreprocessing is a transformer that transform ImageFeature
     """
-    def __init__(self, bigdl_type="float"):
-        super(ImagePreprocessing, self).__init__(bigdl_type)
+    def __init__(self, bigdl_type="float", *args):
+        super(ImagePreprocessing, self).__init__(bigdl_type, *args)
 
     def __call__(self, image_set, bigdl_type="float"):
         """
@@ -109,3 +109,25 @@ class Saturation(ImagePreprocessing):
     def __init__(self, delta_low, delta_high, bigdl_type="float"):
         self.value = callBigDlFunc(
             bigdl_type, "createImgSaturation", delta_low, delta_high)
+
+class RandomTransformer(ImagePreprocessing):
+    """
+    adjust the image Saturation
+    :param deltaLow brightness parameter: low bound
+    :param deltaHigh brightness parameter: high bound
+    """
+
+    def __init__(self, transformer, maxProb, bigdl_type="float"):
+        self.value = callBigDlFunc(
+            bigdl_type, "createImgRandomTransformer", transformer, maxProb)
+
+class BytesToMat(ImagePreprocessing):
+    """
+    adjust the image Saturation
+    :param deltaLow brightness parameter: low bound
+    :param deltaHigh brightness parameter: high bound
+    """
+
+    def __init__(self, byte_key, bigdl_type="float"):
+        self.value = callBigDlFunc(
+            bigdl_type, "createImgBytesToMat", byte_key)

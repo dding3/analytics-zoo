@@ -22,6 +22,7 @@ import com.intel.analytics.bigdl.python.api.{JTensor, PythonBigDL}
 import com.intel.analytics.bigdl.tensor.Tensor
 import com.intel.analytics.bigdl.tensor.TensorNumericMath.TensorNumeric
 import com.intel.analytics.bigdl.transform.vision.image.{FeatureTransformer, ImageFeature}
+import com.intel.analytics.zoo.feature.common.ImageProcessing
 import com.intel.analytics.zoo.feature.image._
 import org.apache.spark.api.java.{JavaRDD, JavaSparkContext}
 
@@ -155,5 +156,13 @@ class PythonImageFeature[T: ClassTag](implicit ev: TensorNumeric[T]) extends Pyt
 
   def createImgSaturation(deltaLow: Double, deltaHigh: Double): Saturation = {
     Saturation(deltaLow, deltaHigh)
+  }
+
+  def createImgRandomTransformer(transformer: ImageProcessing, maxProb: Double): RandomTransformer = {
+    RandomTransformer(transformer, maxProb)
+  }
+
+  def createImgBytesToMat(byteKey: String): BytesToMat = {
+    BytesToMat(byteKey)
   }
 }
