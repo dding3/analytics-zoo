@@ -42,10 +42,12 @@ object Utils {
     dampening: Double = 0.0,
     hiddenSize: Int = 10,
     vocabSize: Int = 8004,
+//    vocabSize: Int = 15,
     bptt: Int = 4,
     nEpochs: Int = 2,
     trainingSplit: Double = 0.8,
     embedDim: Int = 1024,
+//    embedDim: Int = 10,
     sentFile: Option[String] = None,
     tokenFile: Option[String] = None,
     overWriteCheckpoint: Boolean = false)

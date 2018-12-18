@@ -77,6 +77,11 @@ class Seq2seq[T: ClassTag](
 model.asInstanceOf[KerasNet[T]].compile(optimizer, loss, metrics)
 }
 
+  def setCheckPoint(path: String, overWrite: Boolean = true)
+                   (implicit ev: TensorNumeric[T]): Unit = {
+    model.asInstanceOf[KerasNet[T]].setCheckpoint(path, overWrite)
+  }
+
   def fit(
     x: RDD[Sample[T]],
     batchSize: Int = 32,
@@ -87,9 +92,40 @@ model.asInstanceOf[KerasNet[T]].compile(optimizer, loss, metrics)
       model.asInstanceOf[KerasNet[T]].fit(x, batchSize, nbEpoch, validationData,
         featurePaddingParam, labelPaddingParam)
   }
+
+  def inference(input: Table, maxSeqLen: Int = 30, stopSign: Tensor[T] = null,
+                buildOutput: KerasLayer[Tensor[T], Tensor[T], T] = null): Tensor[T] = {
+    val sent1 = input.toTable[Tensor[T]](1)
+    val sent2 = input.toTable[Tensor[T]](2)
+    require(sent2.size(Seq2seq.timeDim) == 1, "expect decoder input is batch x time(1) x feature")
+
+    var curInput = sent2
+    val sizes = curInput.size()
+    val concat = Tensor[T](Array(sizes(0), maxSeqLen + 1) ++ sizes.drop(2))
+    concat.narrow(Seq2seq.timeDim, 1, 1).copy(sent2)
+    var break = false
+
+    if (!buildOutput.isBuilt()) {
+      buildOutput.build(generator.getOutputShape())
+    }
+    var j = 1
+    // Iteratively output predicted words
+    while (j <= maxSeqLen && !break) {
+      val modelOutput = updateOutput(T(sent1, curInput)).toTensor[T]
+      val generateOutput = if (buildOutput != null) buildOutput.forward(modelOutput) else modelOutput
+      val predict = generateOutput.select(2, generateOutput.size(2))
+
+      if (stopSign != null && predict.almostEqual(stopSign, 1e-8)) break = true
+      j += 1
+      concat.narrow(Seq2seq.timeDim, j, 1).copy(predict)
+      curInput = concat.narrow(Seq2seq.timeDim, 1, j)
+    }
+    curInput
+  }
 }
 
 object Seq2seq {
+  val timeDim = 2
   /**
    * [[Seq2seq]] A trainable interface for a simple, generic encoder + decoder model
    * @param encoder an encoder object

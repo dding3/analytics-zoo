@@ -19,7 +19,9 @@ package com.intel.analytics.zoo.examples.chatbot
 import com.intel.analytics.bigdl.dataset._
 import com.intel.analytics.bigdl.dataset.text.utils.SentenceToken
 import com.intel.analytics.bigdl.dataset.text._
-import com.intel.analytics.bigdl.nn.{InternalClassNLLCriterion, RandomUniform, TimeDistributedMaskCriterion}
+import com.intel.analytics.bigdl.nn.abstractnn.{AbstractModule, Activity}
+import com.intel.analytics.bigdl.nn.keras.KerasLayer
+import com.intel.analytics.bigdl.nn.{InternalClassNLLCriterion, LookupTable, RandomUniform, TimeDistributedMaskCriterion}
 import com.intel.analytics.bigdl.numeric.NumericFloat
 import com.intel.analytics.bigdl.optim.{Adam, OptimMethod}
 import com.intel.analytics.bigdl.tensor.TensorNumericMath.TensorNumeric
@@ -28,8 +30,8 @@ import com.intel.analytics.bigdl.utils.RandomGenerator._
 import com.intel.analytics.bigdl.utils.{Shape, T}
 import com.intel.analytics.zoo.common.{NNContext, ZooDictionary}
 import com.intel.analytics.zoo.models.seq2seq.{Decoder, Encoder, Seq2seq}
-import com.intel.analytics.zoo.pipeline.api.keras.layers.utils.KerasUtils
-import com.intel.analytics.zoo.pipeline.api.keras.layers.{Activation, Dense, Embedding, TimeDistributed}
+import com.intel.analytics.zoo.pipeline.api.keras.layers.internal.InternalMax
+import com.intel.analytics.zoo.pipeline.api.keras.layers._
 import com.intel.analytics.zoo.pipeline.api.keras.models.Sequential
 import org.apache.log4j.{Level, Logger}
 
@@ -98,22 +100,53 @@ object Train {
         .map(chatIdxToLabeledChat(_))
         .map(labeledChatToSample(_))
 
+//      RNG.setSeed(50)
       val stdv = 1.0 / math.sqrt(param.embedDim)
 
+//      val embEnc =
+//        new Embedding(vocabSize, param.embedDim, maskZero = true,
+//          paddingValue = padId, init = RandomUniform(-stdv, stdv))
+//      val embDec =
+//        new Embedding(vocabSize, param.embedDim, maskZero = true,
+//          paddingValue = padId, init = RandomUniform(-stdv, stdv))
+//      val embEncW = embEnc.parameters()._1
+//      val embDecW = embDec.parameters()._1
+//      val embEncG = embEnc.parameters()._2
+//      val embDecG = embDec.parameters()._2
+//      for (i <- 0 until embEncW.size) {
+//        embEncW(i).set(embDecW(i))
+//        embEncG(i).set(embDecG(i))
+//      }
+
+      val wInit = RandomUniform(-stdv, stdv)
+      val bInit = RandomUniform(-stdv, stdv)
+
+      val enclookuptable = LookupTable(
+        vocabSize,
+        param.embedDim,
+        paddingValue = padId,
+        maskZero = true
+      ).setInitMethod(wInit, bInit)
+
+      val declookuptable = LookupTable(
+        vocabSize,
+        param.embedDim,
+        paddingValue = padId,
+        maskZero = true
+      ).setInitMethod(wInit, bInit)
+
+      declookuptable.weight.set(enclookuptable.weight)
+      declookuptable.gradWeight.set(enclookuptable.gradWeight)
+
       val embEnc =
-        new Embedding(vocabSize, param.embedDim, maskZero = true,
-          paddingValue = padId, init = RandomUniform(-stdv, stdv))
+        new KerasLayerWrapper[Float](enclookuptable
+          .asInstanceOf[AbstractModule[Activity, Activity, Float]])
+        .asInstanceOf[KerasLayer[Tensor[Float], Tensor[Float], Float]]
+
       val embDec =
-        new Embedding(vocabSize, param.embedDim, maskZero = true,
-          paddingValue = padId, init = RandomUniform(-stdv, stdv))
-      val embEncW = embEnc.parameters()._1
-      val embDecW = embDec.parameters()._1
-      val embEncG = embEnc.parameters()._2
-      val embDecG = embDec.parameters()._2
-      for (i <- 0 until embEncW.size) {
-        embEncW(i).set(embDecW(i))
-        embEncG(i).set(embDecG(i))
-      }
+        new KerasLayerWrapper[Float](declookuptable
+          .asInstanceOf[AbstractModule[Activity, Activity, Float]])
+          .asInstanceOf[KerasLayer[Tensor[Float], Tensor[Float], Float]]
 
       val encoder = Encoder[Float]("lstm", 3, param.embedDim,
         embEnc)
@@ -141,9 +174,13 @@ object Train {
           InternalClassNLLCriterion(paddingValue = padId),
           paddingValue = padId
         ))
+      if (param.checkpoint.isDefined) {
+        model.setCheckPoint(param.checkpoint.get, param.overWriteCheckpoint)
+      }
 
       val seeds = Array("happy birthday have a nice day",
         "donald trump won last nights presidential debate according to snap online polls")
+//val seeds = Array("happy I am light rain")
 
       var i = 1
       while (i <= param.nEpochs) {
@@ -151,22 +188,36 @@ object Train {
           trainSet, batchSize = param.batchSize,
           nbEpoch = i)
 
-//        for (seed <- seeds) {
-//          println("Query> " + seed)
-//          val evenToken = SentenceTokenizer().apply(Array(seed).toIterator).toArray
-//          val oddToken = (SentenceBiPadding() -> SentenceTokenizer())
-//            .apply(Array("").toIterator).toArray
-//          val labeledChat = evenToken.zip(oddToken)
-//            .map(chatToLabeledChat(dictionary, _)).apply(0)
-//
-//          val sent1 = Tensor(Storage(labeledChat._1), 1, Array(1, labeledChat._1.length))
-//          val sent2 = Tensor(Storage(labeledChat._2), 1, Array(1, labeledChat._2.length))
-//          val sent3 = Tensor(Storage(labeledChat._2), 1, Array(1, labeledChat._2.length))
-//          val timeDim = 2
-//          val featDim = 3
-//          val end = dictionary.getIndex(SentenceToken.end) + 1
-//          val endSign = Tensor(Array(end.toFloat), Array(1))
-//        }
+        for (seed <- seeds) {
+          println("Query> " + seed)
+          val evenToken = SentenceTokenizer().apply(Array(seed).toIterator).toArray
+          val oddToken = (SentenceBiPadding() -> SentenceTokenizer())
+            .apply(Array("").toIterator).toArray
+          val labeledChat = evenToken.zip(oddToken)
+            .map(buildInferInput(dictionary, _)).apply(0)
+
+          val sent1 = Tensor(Storage(labeledChat._1), 1, Array(1, labeledChat._1.length))
+          val sent2 = Tensor(Storage(labeledChat._2), 1, Array(1, labeledChat._2.length))
+
+          val featDim = 3
+          val end = dictionary.getIndex(SentenceToken.end) + 1
+          val endSign = Tensor(Array(end.toFloat), Array(1))
+
+          val layers = new KerasLayerWrapper[Float](
+            InternalMax(dim = featDim, returnValue = false)
+              .asInstanceOf[AbstractModule[Activity, Activity, Float]])
+            .asInstanceOf[KerasLayer[Tensor[Float], Tensor[Float], Float]]
+
+          val infer = model.inference(T(sent1, sent2), maxSeqLen = 30,
+            stopSign = endSign, buildOutput = layers)
+
+          val predArray = new Array[Float](infer.nElement())
+          Array.copy(infer.storage().array(), infer.storageOffset() - 1,
+            predArray, 0, infer.nElement())
+          val result = predArray.grouped(infer.size(Seq2seq.timeDim)).toArray[Array[Float]]
+            .map(x => x.map(t => dictionary.getWord(t - 1)))
+          println(result.map(x => x.mkString(" ")).mkString("\n"))
+        }
         model.clearState()
         i += 1
       }
@@ -175,30 +226,36 @@ object Train {
   }
 
 
-  def chatToLabeledChat[T: ClassTag](
+  def buildInferInput[T: ClassTag](
     dictionary: Dictionary,
     chat: (Array[String], Array[String]))(implicit ev: TensorNumeric[T])
-  : (Array[T], Array[T], Array[T]) = {
-    val (indices1, indices2) =
-      (chat._1.map(x => ev.fromType[Int](dictionary.getIndex(x) + 1)),
-        chat._2.map(x => ev.fromType[Int](dictionary.getIndex(x) + 1)))
+  : (Array[T], Array[T]) = {
 //    val (indices1, indices2) =
 //      (chat._1.map(x => ev.fromType[Int](dictionary.getIndex(x))),
 //        chat._2.map(x => ev.fromType[Int](dictionary.getIndex(x))))
-    val label = indices2.drop(1)
-    (indices1, indices2.take(indices2.length - 1), label)
+//    (indices1, indices2.take(indices2.length - 1))
+
+    val (indices1, indices2) =
+      (chat._1.map(x => ev.fromType[Int](dictionary.getIndex(x) + 1)),
+        chat._2.map(x => ev.fromType[Int](dictionary.getIndex(x) + 1)))
+    (indices1, indices2.take(indices2.length - 1))
   }
 
   def chatIdxToLabeledChat[T: ClassTag](
     chat: (Array[Int], Array[Int]))(implicit ev: TensorNumeric[T])
   : (Array[T], Array[T], Array[T]) = {
-    val evOne = ev.fromType(1)
+//    val evOne = ev.fromType(1)
+//    val (indices1, indices2) =
+//    (chat._1.map(x => ev.fromType[Int](x)),
+//      chat._2.map(x => ev.fromType[Int](x)))
+//    // raw data is 0 based, and we need change it to 1 based.
+//    // Embeddding will add 1 for feature, we need manually add 1 for label
+//    val label = indices2.drop(1).clone().map(x => ev.plus(x, evOne))
+//    (indices1, indices2.take(indices2.length - 1), label)
     val (indices1, indices2) =
-    (chat._1.map(x => ev.fromType[Int](x)),
-      chat._2.map(x => ev.fromType[Int](x)))
-    // raw data is 0 based, and we need change it to 1 based.
-    // Embeddding will add 1 for feature, we need manually add 1 for label
-    val label = indices2.drop(1).clone().map(x => ev.plus(x, evOne))
+    (chat._1.map(x => ev.fromType[Int](x + 1)),
+      chat._2.map(x => ev.fromType[Int](x + 1)))
+    val label = indices2.drop(1)
     (indices1, indices2.take(indices2.length - 1), label)
   }
 
@@ -215,7 +272,7 @@ object Train {
     override def apply(prev: Iterator[String]): Iterator[String] = {
       prev.map(x => {
         val index = x.indexOf(",0")
-        val sentence = if (index == -1) x
+        val sentence = if (index == -1) sentenceStart + "," + x + "," + sentenceEnd
         else sentenceStart + "," + x.slice(0, index) + "," + sentenceEnd + x.slice(index, x.length)
         sentence
       })
