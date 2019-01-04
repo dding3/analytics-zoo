@@ -20,7 +20,9 @@ import java.util.{List => JList, Map => JMap}
 
 import com.intel.analytics.bigdl.dataset.PaddingParam
 import com.intel.analytics.bigdl.nn.abstractnn.{AbstractModule, Activity}
+import com.intel.analytics.bigdl.nn.keras.KerasLayer
 import com.intel.analytics.bigdl.python.api.{JTensor, Sample}
+import com.intel.analytics.bigdl.tensor.Tensor
 import com.intel.analytics.bigdl.tensor.TensorNumericMath.TensorNumeric
 import com.intel.analytics.bigdl.transform.vision.image.ImageFeature
 import com.intel.analytics.zoo.common.PythonZoo
@@ -32,9 +34,10 @@ import com.intel.analytics.zoo.models.image.objectdetection._
 import com.intel.analytics.zoo.models.image.imageclassification.{ImageClassifier, LabelReader => IMCLabelReader}
 import com.intel.analytics.zoo.models.recommendation.{NeuralCF, Recommender, UserItemFeature, UserItemPrediction}
 import com.intel.analytics.zoo.models.recommendation._
+import com.intel.analytics.zoo.models.seq2seq.Encoder
 import com.intel.analytics.zoo.models.textclassification.TextClassifier
 import com.intel.analytics.zoo.models.textmatching.KNRM
-import com.intel.analytics.zoo.pipeline.api.keras.layers.Embedding
+import com.intel.analytics.zoo.pipeline.api.keras.layers.{Embedding, Recurrent}
 import org.apache.spark.api.java.JavaRDD
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.DataFrame
@@ -270,4 +273,10 @@ class PythonZooModel[T: ClassTag](implicit ev: TensorNumeric[T]) extends PythonZ
     KNRM.loadModel(path, weightPath)
   }
 
+  def createEncoder(
+      rnns: Array[Recurrent[T]],
+      embedding: KerasLayer[Tensor[T], Tensor[T], T],
+      inputShape: JList[Int] = null): Encoder[T] = {
+    Encoder(rnns, embedding, toScalaShape(inputShape))
+  }
 }

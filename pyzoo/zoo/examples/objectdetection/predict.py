@@ -20,6 +20,12 @@ import cv2
 from zoo.common.nncontext import init_nncontext
 from zoo.models.image.objectdetection import *
 
+from zoo.models.seq2seq import Encoder
+
+
+encoder = Encoder.initialize("lstm", 2, 3)
+
+
 sc = init_nncontext("Object Detection Example")
 
 parser = argparse.ArgumentParser()
