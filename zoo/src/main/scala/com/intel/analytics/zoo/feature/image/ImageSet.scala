@@ -18,12 +18,16 @@ package com.intel.analytics.zoo.feature.image
 
 import java.io.File
 
+import java.nio.ByteBuffer
+
 import com.intel.analytics.bigdl.DataSet
+import com.intel.analytics.bigdl.dataset.DataSet.SeqFileFolder.readLabel
 import com.intel.analytics.bigdl.dataset._
 import com.intel.analytics.bigdl.transform.vision.image._
 import com.intel.analytics.zoo.common.Utils
 import com.intel.analytics.zoo.feature.common.Preprocessing
 import org.apache.commons.io.FileUtils
+import org.apache.hadoop.io.Text
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.opencv.imgcodecs.Imgcodecs
@@ -34,9 +38,7 @@ import java.nio.file.{Files, Paths}
 
 import com.intel.analytics.bigdl.tensor.Tensor
 import com.intel.analytics.bigdl.utils.T
-import org.apache.hadoop.fs.{LocatedFileStatus, Path}
-
-import scala.collection.mutable.ArrayBuffer
+import org.apache.hadoop.fs.Path
 
 /**
  * ImageSet wraps a set of ImageFeature
@@ -234,18 +236,20 @@ object ImageSet {
   def read(path: String, sc: SparkContext = null, minPartitions: Int = 1,
            resizeH: Int = -1, resizeW: Int = -1,
            imageCodec: Int = Imgcodecs.CV_LOAD_IMAGE_UNCHANGED,
-           withLabel: Boolean = false): ImageSet = {
+           withLabel: Boolean = false, oneBasedLabel: Boolean = true): ImageSet = {
     val imageSet = if (null != sc) {
-      readToDistributedImageSet(path, minPartitions, sc, withLabel)
+      readToDistributedImageSet(path, minPartitions, sc, withLabel, oneBasedLabel)
     } else {
-      readToLocalImageSet(path, withLabel)
+      readToLocalImageSet(path, withLabel, oneBasedLabel)
     }
     transform(imageSet, resizeH, resizeW, imageCodec)
   }
 
   private def readToDistributedImageSet(pathStr: String,
                                         minPartitions: Int,
-                                        sc: SparkContext, withLabel: Boolean): ImageSet = {
+                                        sc: SparkContext,
+                                        withLabel: Boolean,
+                                        oneBasedLabel: Boolean): ImageSet = {
     if (withLabel) {
       val path = new Path(pathStr)
 
@@ -254,7 +258,10 @@ object ImageSet {
       val classFolders = fsSys.listStatus(path).filter(_.isDirectory)
       val newPathsString = classFolders.map(_.getPath.toUri.toString).mkString(",")
       val labelMap = classFolders.map(_.getPath.getName)
-        .sorted.zipWithIndex.map(c => c._1 -> (c._2 + 1)).toMap
+        .sorted.zipWithIndex.map { c =>
+        if (oneBasedLabel) c._1 -> (c._2 + 1)
+        else c._1 -> c._2
+      }.toMap
       val images = sc.binaryFiles(newPathsString, minPartitions).map { case (p, stream) =>
         val classStr = new Path(p).toUri.getPath
           .substring(fullPath.length + 1).split(File.separator)(0)
@@ -271,7 +278,9 @@ object ImageSet {
     }
   }
 
-  private def readToLocalImageSet(pathStr: String, withLabel: Boolean): ImageSet = {
+  private def readToLocalImageSet(pathStr: String,
+                                  withLabel: Boolean,
+                                  oneBasedLabel: Boolean): ImageSet = {
 
     val basePath = Paths.get(pathStr)
 
@@ -281,7 +290,10 @@ object ImageSet {
 
       val labelMap = classFolders
         .map(_.getFileName.toString)
-        .toArray.sortWith(_ < _).zipWithIndex.map(c => c._1 -> (c._2 + 1)).toMap
+        .toArray.sortWith(_ < _).zipWithIndex.map{ c =>
+        if (oneBasedLabel) c._1 -> (c._2 + 1)
+        else c._1 -> c._2
+      }.toMap
 
       val files = classFolders.flatMap { p =>
         Utils.listLocalFiles(p.toAbsolutePath.toString)
@@ -304,6 +316,35 @@ object ImageSet {
       ImageSet.array(images)
     }
 
+  }
+
+  /**
+   * Read images (with labels) from Hadoop SequenceFiles as ImageSet.
+   *
+   * @param path The folder path that contains sequence files.
+   *             Local or distributed file system (such as HDFS) are supported.
+   * @param sc An instance of SparkContext.
+   * @param minPartitions Integer. A suggestion value of the minimal partition number for input
+   *                      texts. Default is 1.
+   * @param classNum Integer. The number of image categories. Default is 1000 for ImageNet.
+   * @return DistributedImageSet.
+   */
+  def readSequenceFiles(path: String, sc: SparkContext,
+                        minPartitions: Int = 1, classNum: Int = 1000): DistributedImageSet = {
+    val images = sc.sequenceFile(path, classOf[Text], classOf[Text], minPartitions).map(image => {
+      val rawBytes = image._2.copyBytes()
+      val label = Tensor[Float](T(readLabel(image._1).toFloat))
+      val imgBuffer = ByteBuffer.wrap(rawBytes)
+      val width = imgBuffer.getInt
+      val height = imgBuffer.getInt
+      val bytes = new Array[Byte](3 * width * height)
+      System.arraycopy(imgBuffer.array(), 8, bytes, 0, bytes.length)
+      val imf = ImageFeature(bytes, label)
+      imf(ImageFeature.originalSize) = (height, width, 3)
+      imf
+    }).filter(_[Tensor[Float]](ImageFeature.label).valueAt(1) <= classNum)
+    val imageSet = ImageSet.rdd(images)
+    (imageSet -> ImagePixelBytesToMat()).toDistributed()
   }
 
   /**
