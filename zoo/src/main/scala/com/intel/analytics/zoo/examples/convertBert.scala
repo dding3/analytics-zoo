@@ -13,7 +13,7 @@ import scala.collection.mutable.ArrayBuffer
 
 object convertBert {
   def main(args: Array[String]): Unit = {
-//    val t = BERT.loadModel[Float]("/tmp/zoo-bert.model")
+//    val t = BERT.loadModel[Float]("/tmp/zoo-bert2.model")
     val vocab = 30522
     val hiddenSize = 768
     val intermediateSize = 3072
@@ -39,7 +39,7 @@ object convertBert {
     }
     var param = Tensor[Float](buf.flatten.toArray, Array(buf.size, buf.head.length))
     require(param.size.deep == weight(i).size().deep)
-    weight(i).set(param)
+    weight(i).copy(param)
     i += 1
 
     buf.clear()
@@ -50,7 +50,7 @@ object convertBert {
     }
     param = Tensor[Float](buf.flatten.toArray, Array(buf.size, buf.head.length))
     require(param.size.deep == weight(i).size().deep)
-    weight(i).set(param)
+    weight(i).copy(param)
     i += 1
 
     buf.clear()
@@ -61,7 +61,7 @@ object convertBert {
     }
     param = Tensor[Float](buf.flatten.toArray, Array(buf.size, buf.head.length))
     require(param.size.deep == weight(i).size().deep)
-    weight(i).set(param)
+    weight(i).copy(param)
     i += 1
 
     buf.clear()
@@ -72,7 +72,7 @@ object convertBert {
     }
     param = Tensor[Float](buf.flatten.toArray, Array(buf.head.length, buf.size))
     require(param.size.deep == weight(i).size().deep)
-    weight(i).set(param)
+    weight(i).copy(param)
     i += 1
 
     buf.clear()
@@ -83,7 +83,7 @@ object convertBert {
     }
     param = Tensor[Float](buf.flatten.toArray, Array(buf.head.length, buf.size))
     require(param.size.deep == weight(i).size().deep)
-    weight(i).set(param)
+    weight(i).copy(param)
     i += 1
 
     // mapping block parameters
@@ -149,8 +149,8 @@ object convertBert {
         if (file.contains("bias")) param.squeeze(2)
 //        require(param.size.deep == weight(i).size().deep)
         if (file.contains("kernel")) {
-          weight(i).set(param.t())
-        } else weight(i).set(param)
+          weight(i).copy(param.t())
+        } else weight(i).copy(param)
         i += 1
       }
       blockId += 1
@@ -164,7 +164,7 @@ object convertBert {
     }
     param = Tensor[Float](buf.flatten.toArray, Array(buf.size, buf.head.length))
     require(param.size.deep == weight(i).size().deep)
-    weight(i).set(param.t())
+    weight(i).copy(param.t())
     i += 1
 
     buf.clear()
@@ -174,9 +174,9 @@ object convertBert {
       ))
     }
     param = Tensor[Float](buf.flatten.toArray, Array(buf.size, buf.head.length))
-    weight(i).set(param)
+    weight(i).copy(param)
 
-    preTrainModel.saveModule("/tmp/zoo-bert.model", overWrite = true)
+    preTrainModel.saveModule("/tmp/zoo-bert2.model", overWrite = true)
     println("convert done!")
   }
 }
