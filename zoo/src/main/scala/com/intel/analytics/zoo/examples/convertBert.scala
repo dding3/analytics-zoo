@@ -176,7 +176,7 @@ object convertBert {
     param = Tensor[Float](buf.flatten.toArray, Array(buf.size, buf.head.length))
     weight(i).copy(param)
 
-    preTrainModel.saveModule("/tmp/zoo-bert2.model", overWrite = true)
+    preTrainModel.saveModule("/tmp/zoo-bert.model", overWrite = true)
     println("convert done!")
   }
 }
