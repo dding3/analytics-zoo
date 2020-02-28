@@ -22,6 +22,30 @@ from pyspark import SparkContext
 from zoo.common.nncontext import init_spark_conf
 
 from zoo import init_nncontext
+from zoo.common import get_remote_file_list
+from bigdl.util.common import get_node_and_core_number
+
+
+def processPDFrame(sc, path, pdFunc):
+    data_paths = get_remote_file_list(path)[:10000]
+    node_num, core_num = get_node_and_core_number()
+
+    def func(iterator):
+        import os
+        import numpy
+        os.environ['ARROW_LIBHDFS_DIR'] = '/home/nvkvs/hadoop/lib/native'
+        import pandas as pd
+        import pyarrow as pa
+        fs = pa.hdfs.connect()
+
+        for x in iterator:
+            with fs.open(x, 'rb') as f:
+                df = pd.read_csv(f, header=0)
+                yield pdFunc(df)
+
+    rdd = sc.parallelize(data_paths, node_num * 20) \
+        .mapPartitions(func)
+    return rdd
 
 
 class SparkRunner():
