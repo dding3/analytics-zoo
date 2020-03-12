@@ -361,6 +361,17 @@ class FeatureSet(DataSet):
         jvalue = callZooFunc(bigdl_type, "createFeatureSetFromTfDataset", func, total_size)
         return cls(jvalue=jvalue)
 
+    @classmethod
+    def csv_dataset(cls, bigdl_type="float"):
+        """
+        :param func: a function return a tensorflow dataset
+        :param total_size: total size of this dataset
+        :param bigdl_type: numeric type
+        :return: A feature set
+        """
+        jvalue = callZooFunc(bigdl_type, "createFeatureSetFromCSV")
+        return cls(jvalue=jvalue)
+
     def transform(self, transformer):
         """
         Helper function to transform the data type in the data set.

@@ -21,9 +21,10 @@ import java.util
 import java.util.concurrent.atomic.AtomicInteger
 
 import com.intel.analytics.bigdl.DataSet
-import com.intel.analytics.bigdl.dataset.{AbstractDataSet, DistributedDataSet, MiniBatch, Transformer}
+import com.intel.analytics.bigdl.dataset._
 import com.intel.analytics.bigdl.tensor.Tensor
 import com.intel.analytics.bigdl.utils.RandomGenerator
+import com.intel.analytics.zoo.common.Utils
 import com.intel.analytics.zoo.core.TFNetNative
 import com.intel.analytics.zoo.feature.common.{ArrayLike, ArrayLikeWrapper}
 import com.intel.analytics.zoo.feature.pmem._
@@ -37,6 +38,8 @@ import jep._
 
 import scala.reflect.ClassTag
 import scala.collection.JavaConverters._
+import scala.collection.mutable.ArrayBuffer
+import scala.tools.nsc.interpreter._
 
 /**
  * A set of data which is used in the model optimization process. The FeatureSet can be access in
@@ -370,7 +373,7 @@ object PythonLoaderFeatureSet{
   }
 
   private var jepRDD: RDD[SharedInterpreter] = null
-  protected def getOrCreateInterpRdd(): RDD[SharedInterpreter] = {
+  def getOrCreateInterpRdd(): RDD[SharedInterpreter] = {
     if (jepRDD == null) {
       this.synchronized {
         if (jepRDD == null) {
@@ -379,7 +382,7 @@ object PythonLoaderFeatureSet{
           // TODO: make sure 1 executor 1 partition
           val originRdd = sc.parallelize(
             Array.tabulate(nodeNumber)(_ => "dummy123123"), nodeNumber * 10)
-            .mapPartitions(_ => (0 until 20000000).toIterator)
+            .mapPartitions(_ => (0 until 200).toIterator)
             .coalesce(nodeNumber)
             .setName("PartitionRDD")
             .persist(StorageLevel.DISK_ONLY)
@@ -402,25 +405,27 @@ object PythonLoaderFeatureSet{
   private var sharedInterpreter: SharedInterpreter = null
   protected def getOrCreateInterpreter(): SharedInterpreter = {
     if (sharedInterpreter == null) {
-      this.synchronized {
+//      this.synchronized {
         if (sharedInterpreter == null) {
           val config: JepConfig = new JepConfig()
           config.setClassEnquirer(new NamingConventionClassEnquirer())
+          config.setIncludePath("/home/ding/proj/skt/ARMemNet")
           SharedInterpreter.setConfig(config)
+          MainInterpreter.setJepLibraryPath("/home/ding/tensorflow_venv/venv-py3/lib/python3.5/site-packages/jep/libjep.so")
           sharedInterpreter = new SharedInterpreter()
-          val str =
-            s"""
-               |import tensorflow as tf
-               |tf.compat.v1.set_random_seed(${1000})
-               |""".stripMargin
-          sharedInterpreter.exec(str)
+//          val str =
+//            s"""
+//               |import tensorflow as tf
+//               |tf.compat.v1.set_random_seed(${1000})
+//               |""".stripMargin
+//          sharedInterpreter.exec(str)
         }
-      }
+//      }
     }
     sharedInterpreter
   }
 
-  protected def toArrayTensor(
+  def toArrayTensor(
         data: AnyRef): Array[Tensor[Float]] = {
     data match {
       case ndArray: NDArray[_] =>
@@ -439,7 +444,7 @@ object PythonLoaderFeatureSet{
     }
   }
 
-  protected def ndArrayToTensor(ndArray: NDArray[_]): Tensor[Float] = {
+  def ndArrayToTensor(ndArray: NDArray[_]): Tensor[Float] = {
     val array = ndArray.asInstanceOf[NDArray[Array[_]]]
     val data = array.getData()
     data(0) match {
@@ -727,5 +732,53 @@ object FeatureSet {
           s"DataStrategy ${dataStrategy} is not supported at the moment")
 
     }
+  }
+
+  def pythonCSV(): FeatureSet[Sample[Float]] = {
+    import PythonLoaderFeatureSet._
+    val interpRdd = getOrCreateInterpRdd()
+    val nodeNumber = EngineRef.getNodeNumber()
+    val preimports = s"""
+                        |from pyspark.serializers import CloudPickleSerializer
+                        |import numpy as np
+                        |import pandas as pd
+                        |""".stripMargin
+    interpRdd.mapPartitions{iter =>
+      val interp = iter.next()
+      val partId = TaskContext.getPartitionId()
+      require(partId < nodeNumber, s"partId($partId) should be" +
+        s" smaller than nodeNumber(${nodeNumber})")
+      interp.exec(preimports)
+      Iterator.single(interp)
+    }.count()
+
+    import com.intel.analytics.zoo.common
+    val path = Utils.listPaths("/home/ding/data/skt/raw_csv")
+    val dataPath = SparkContext.getOrCreate().parallelize(path, interpRdd.getNumPartitions)
+
+    val sampleRDD = interpRdd.zipPartitions(dataPath){(iterpIter, pathIter) =>
+      val interp = iterpIter.next()
+      import java.util.{ArrayList => JArrayList}
+      val data = ArrayBuffer[JArrayList[util.Collection[AnyRef]]]()
+      while(!pathIter.isEmpty) {
+        val path = pathIter.next()
+        interp.eval("from preprocess import parse_local_csv, get_feature_label_list")
+        interp.eval(s"data = parse_local_csv('${path}')")
+        interp.eval(s"result = get_feature_label_list(data)")
+        data.append(interp.getValue("result").asInstanceOf[JArrayList[util.Collection[AnyRef]]])
+      }
+
+      import scala.collection.JavaConverters._
+      val record = data.toArray.flatMap(_.asScala)
+      val sample = record.map {x =>
+        val features = x.asScala.head.asInstanceOf[JList[NDArray[_]]].asScala.map(ndArrayToTensor(_))
+        val label = ndArrayToTensor(x.asScala.last.asInstanceOf[NDArray[_]])
+        Sample[Float](features.toArray, label)
+      }
+
+      sample.iterator
+    }
+
+    FeatureSet.rdd(sampleRDD)
   }
 }

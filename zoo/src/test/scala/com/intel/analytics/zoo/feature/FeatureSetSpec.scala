@@ -15,9 +15,20 @@
  */
 package com.intel.analytics.zoo.feature
 
-import com.intel.analytics.zoo.common.NNContext
-import org.apache.spark.{SparkConf, SparkContext}
+import java.util
+
+import com.intel.analytics.bigdl.dataset.Sample
+import com.intel.analytics.zoo.common.{NNContext, Utils}
+import com.intel.analytics.zoo.core.TFNetNative
+import com.intel.analytics.zoo.pipeline.api.keras.layers.utils.EngineRef
+import jep.{JepConfig, NDArray, NamingConventionClassEnquirer, SharedInterpreter}
+import org.apache.spark.rdd.RDD
+import org.apache.spark.storage.StorageLevel
+import org.apache.spark.{SparkConf, SparkContext, TaskContext}
 import org.scalatest.{BeforeAndAfter, FlatSpec, Matchers}
+
+import scala.collection.mutable.ArrayBuffer
+import scala.tools.nsc.interpreter.JList
 
 
 class FeatureSetSpec extends FlatSpec with Matchers with BeforeAndAfter {
@@ -25,6 +36,7 @@ class FeatureSetSpec extends FlatSpec with Matchers with BeforeAndAfter {
 
   before {
     val conf = new SparkConf().setAppName("Test Feature Set").setMaster("local[1]")
+      .set("spark.executorEnv.PYTHONHOME","/home/ding/tensorflow_venv/venv-py3/lib/python3.5/site-packages/jep")
     sc = NNContext.initNNContext(conf)
   }
 
@@ -32,6 +44,55 @@ class FeatureSetSpec extends FlatSpec with Matchers with BeforeAndAfter {
     if (sc != null) {
       sc.stop()
     }
+  }
+
+  "FeatureSet" should "iterate 2" in {
+    import PythonLoaderFeatureSet._
+    val interpRdd = getOrCreateInterpRdd()
+    val nodeNumber = EngineRef.getNodeNumber()
+    val preimports = s"""
+                        |from pyspark.serializers import CloudPickleSerializer
+                        |import numpy as np
+                        |import pandas as pd
+                        |""".stripMargin
+    interpRdd.mapPartitions{iter =>
+      val interp = iter.next()
+      val partId = TaskContext.getPartitionId()
+      require(partId < nodeNumber, s"partId($partId) should be" +
+        s" smaller than nodeNumber(${nodeNumber})")
+      interp.exec(preimports)
+      Iterator.single(interp)
+    }.count()
+
+    import com.intel.analytics.zoo.common
+    val path = Utils.listPaths("/home/ding/data/skt/raw_csv")
+    val dataPath = sc.parallelize(path)
+
+    val sampleRDD = interpRdd.zipPartitions(dataPath){(iterpIter, pathIter) =>
+      val interp = iterpIter.next()
+      import java.util.{ArrayList => JArrayList}
+      val data = ArrayBuffer[JArrayList[util.Collection[AnyRef]]]()
+      while(!pathIter.isEmpty) {
+        val path = pathIter.next()
+        interp.eval("from preprocess_test import parse_local_csv, get_feature_label_list")
+        interp.eval(s"result = parse_local_csv('${path}')")
+        interp.eval(s"result2 = get_feature_label_list(result)")
+        data.append(interp.getValue("result2").asInstanceOf[JArrayList[util.Collection[AnyRef]]])
+      }
+
+      import scala.collection.JavaConverters._
+      val record = data.toArray.flatMap(_.asScala)
+      val sample = record.map {x =>
+        val features = x.asScala.head.asInstanceOf[JList[NDArray[_]]].asScala.map(ndArrayToTensor(_))
+        val label = ndArrayToTensor(x.asScala.last.asInstanceOf[NDArray[_]])
+        Sample(features.toArray, label)
+      }
+
+      sample.iterator
+    }
+
+    val t2 = FeatureSet.rdd(sampleRDD)
+    val t3 = 0
   }
 
   "FeatureSet" should "iterate in sequential order without shuffle" in {
