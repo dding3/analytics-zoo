@@ -373,7 +373,7 @@ object PythonLoaderFeatureSet{
   }
 
   private var jepRDD: RDD[SharedInterpreter] = null
-  def getOrCreateInterpRdd(): RDD[SharedInterpreter] = {
+  def getOrCreateInterpRdd(includePath: String = ""): RDD[SharedInterpreter] = {
     if (jepRDD == null) {
       this.synchronized {
         if (jepRDD == null) {
@@ -392,7 +392,7 @@ object PythonLoaderFeatureSet{
             Iterator.single(1)
           }.count()
           jepRDD = originRdd.mapPartitions { iter =>
-            val interp = getOrCreateInterpreter()
+            val interp = getOrCreateInterpreter(includePath)
             Iterator.single(interp)
           }.setName("SharedInterpRDD").cache()
           jepRDD.count()
@@ -403,13 +403,15 @@ object PythonLoaderFeatureSet{
   }
 
   private var sharedInterpreter: SharedInterpreter = null
-  protected def getOrCreateInterpreter(): SharedInterpreter = {
+  protected def getOrCreateInterpreter(includePath: String=""): SharedInterpreter = {
     if (sharedInterpreter == null) {
 //      this.synchronized {
         if (sharedInterpreter == null) {
           val config: JepConfig = new JepConfig()
           config.setClassEnquirer(new NamingConventionClassEnquirer())
-          config.setIncludePath("/home/ding/proj/skt/ARMemNet")
+          if (!includePath.isEmpty) {
+            config.setIncludePath(includePath)
+          }
           SharedInterpreter.setConfig(config)
           MainInterpreter.setJepLibraryPath("/home/ding/tensorflow_venv/venv-py3/lib/python3.5/site-packages/jep/libjep.so")
           sharedInterpreter = new SharedInterpreter()
@@ -734,9 +736,9 @@ object FeatureSet {
     }
   }
 
-  def pythonCSV(): FeatureSet[Sample[Float]] = {
+  def pythonCSV(filePath: String, includePath: String = ""): FeatureSet[Sample[Float]] = {
     import PythonLoaderFeatureSet._
-    val interpRdd = getOrCreateInterpRdd()
+    val interpRdd = getOrCreateInterpRdd(includePath)
     val nodeNumber = EngineRef.getNodeNumber()
     val preimports = s"""
                         |from pyspark.serializers import CloudPickleSerializer
@@ -753,7 +755,8 @@ object FeatureSet {
     }.count()
 
     import com.intel.analytics.zoo.common
-    val path = Utils.listPaths("/home/ding/data/skt/raw_csv")
+    val path = Utils.listPaths(filePath)
+
     val dataPath = SparkContext.getOrCreate().parallelize(path, interpRdd.getNumPartitions)
 
     val sampleRDD = interpRdd.zipPartitions(dataPath){(iterpIter, pathIter) =>
@@ -762,8 +765,8 @@ object FeatureSet {
       val data = ArrayBuffer[JArrayList[util.Collection[AnyRef]]]()
       while(!pathIter.isEmpty) {
         val path = pathIter.next()
-        interp.eval("from preprocess import parse_local_csv, get_feature_label_list")
-        interp.eval(s"data = parse_local_csv('${path}')")
+        interp.eval("from preprocess import parse_hdfs_csv, get_feature_label_list")
+        interp.eval(s"data = parse_hdfs_csv('${path}')")
         interp.eval(s"result = get_feature_label_list(data)")
         data.append(interp.getValue("result").asInstanceOf[JArrayList[util.Collection[AnyRef]]])
       }

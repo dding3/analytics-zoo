@@ -107,8 +107,8 @@ class PythonFeatureSet[T: ClassTag](implicit ev: TensorNumeric[T]) extends Pytho
       "data", "", totalSize, imports)
   }
 
-  def createFeatureSetFromCSV(): FeatureSet[com.intel.analytics.bigdl.dataset.Sample[Float]] = {
-    FeatureSet.pythonCSV()
+  def createFeatureSetFromCSV(filePath: String, includePath: String = ""): FeatureSet[com.intel.analytics.bigdl.dataset.Sample[Float]] = {
+    FeatureSet.pythonCSV(filePath, includePath)
   }
 
 }

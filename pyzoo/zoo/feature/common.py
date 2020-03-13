@@ -362,14 +362,14 @@ class FeatureSet(DataSet):
         return cls(jvalue=jvalue)
 
     @classmethod
-    def csv_dataset(cls, bigdl_type="float"):
+    def csv_dataset(cls, file_path, include_path="", bigdl_type="float"):
         """
         :param func: a function return a tensorflow dataset
         :param total_size: total size of this dataset
         :param bigdl_type: numeric type
         :return: A feature set
         """
-        jvalue = callZooFunc(bigdl_type, "createFeatureSetFromCSV")
+        jvalue = callZooFunc(bigdl_type, "createFeatureSetFromCSV", file_path, include_path)
         return cls(jvalue=jvalue)
 
     def transform(self, transformer):
