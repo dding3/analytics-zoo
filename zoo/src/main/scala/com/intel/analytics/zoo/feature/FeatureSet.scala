@@ -388,7 +388,8 @@ object PythonLoaderFeatureSet{
             .persist(StorageLevel.DISK_ONLY)
           originRdd.count()
           originRdd.mapPartitions{
-            _ => TFNetNative.isLoaded
+            _ =>
+              TFNetNative.isLoaded
             Iterator.single(1)
           }.count()
           jepRDD = originRdd.mapPartitions { iter =>
@@ -413,7 +414,6 @@ object PythonLoaderFeatureSet{
             config.setIncludePath(includePath)
           }
           SharedInterpreter.setConfig(config)
-          MainInterpreter.setJepLibraryPath("/home/ding/tensorflow_venv/venv-py3/lib/python3.5/site-packages/jep/libjep.so")
           sharedInterpreter = new SharedInterpreter()
 //          val str =
 //            s"""
@@ -740,19 +740,17 @@ object FeatureSet {
     import PythonLoaderFeatureSet._
     val interpRdd = getOrCreateInterpRdd(includePath)
     val nodeNumber = EngineRef.getNodeNumber()
-    val preimports = s"""
-                        |from pyspark.serializers import CloudPickleSerializer
-                        |import numpy as np
-                        |import pandas as pd
-                        |""".stripMargin
-    interpRdd.mapPartitions{iter =>
-      val interp = iter.next()
-      val partId = TaskContext.getPartitionId()
-      require(partId < nodeNumber, s"partId($partId) should be" +
-        s" smaller than nodeNumber(${nodeNumber})")
-      interp.exec(preimports)
-      Iterator.single(interp)
-    }.count()
+//    val preimports = s"""
+//                        |import pandas as pd
+//                        |""".stripMargin
+//    interpRdd.mapPartitions{iter =>
+//      val interp = iter.next()
+//      val partId = TaskContext.getPartitionId()
+//      require(partId < nodeNumber, s"partId($partId) should be" +
+//        s" smaller than nodeNumber(${nodeNumber})")
+//      interp.exec(preimports)
+//      Iterator.single(interp)
+//    }.count()
 
     import com.intel.analytics.zoo.common
     val path = Utils.listPaths(filePath)
@@ -765,7 +763,7 @@ object FeatureSet {
       val data = ArrayBuffer[JArrayList[util.Collection[AnyRef]]]()
       while(!pathIter.isEmpty) {
         val path = pathIter.next()
-        interp.eval("from preprocess import parse_hdfs_csv, get_feature_label_list")
+        interp.eval("from ARMemNet.preprocess import parse_hdfs_csv, get_feature_label_list")
         interp.eval(s"data = parse_hdfs_csv('${path}')")
         interp.eval(s"result = get_feature_label_list(data)")
         data.append(interp.getValue("result").asInstanceOf[JArrayList[util.Collection[AnyRef]]])
