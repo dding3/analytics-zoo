@@ -27,13 +27,18 @@ from bigdl.util.common import get_node_and_core_number
 
 
 def processPDFrame(sc, path, pdFunc):
-    data_paths = get_remote_file_list(path)[:10000]
+    data_paths = get_remote_file_list(path)
     node_num, core_num = get_node_and_core_number()
 
     def func(iterator):
         import os
+        os.environ['HADOOP_HOME']='/opt/work/hadoop-2.7.2'
+        os.environ['ARROW_LIBHDFS_DIR']='/opt/work/hadoop-2.7.2/lib/native'
+
+        import sys
+        sys.path.append("/opt/work/hadoop-2.7.2/bin")
+
         import numpy
-        os.environ['ARROW_LIBHDFS_DIR'] = '/home/nvkvs/hadoop/lib/native'
         import pandas as pd
         import pyarrow as pa
         fs = pa.hdfs.connect()
