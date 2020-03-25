@@ -406,7 +406,7 @@ object PythonLoaderFeatureSet{
   private var sharedInterpreter: SharedInterpreter = null
   protected def getOrCreateInterpreter(includePath: String=""): SharedInterpreter = {
     if (sharedInterpreter == null) {
-//      this.synchronized {
+      this.synchronized {
         if (sharedInterpreter == null) {
           val config: JepConfig = new JepConfig()
           config.setClassEnquirer(new NamingConventionClassEnquirer())
@@ -422,7 +422,7 @@ object PythonLoaderFeatureSet{
 //               |""".stripMargin
 //          sharedInterpreter.exec(str)
         }
-//      }
+      }
     }
     sharedInterpreter
   }
