@@ -106,10 +106,6 @@ def put_local_file_to_remote(local_path, remote_path, over_write=False):
     callZooFunc("float", "putLocalFileToRemote", local_path, remote_path, over_write)
 
 
-def get_remote_file_list(remote_path, recursive=False):
-    return callZooFunc("float", "listRemoteFiles", remote_path)
-
-
 def set_core_number(num):
     callZooFunc("float", "setCoreNumber", num)
 
