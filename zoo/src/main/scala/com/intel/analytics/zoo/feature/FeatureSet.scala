@@ -404,7 +404,7 @@ object PythonLoaderFeatureSet{
   }
 
   private var sharedInterpreter: SharedInterpreter = null
-  protected def getOrCreateInterpreter(includePath: String=""): SharedInterpreter = {
+  def getOrCreateInterpreter(includePath: String=""): SharedInterpreter = {
     if (sharedInterpreter == null) {
       this.synchronized {
         if (sharedInterpreter == null) {
@@ -736,7 +736,8 @@ object FeatureSet {
     }
   }
 
-  def pythonCSV(filePath: String, includePath: String = ""): FeatureSet[Sample[Float]] = {
+  def pythonCSV(filePath: String, includePath: String = "", prefix: Boolean = true): FeatureSet[Sample[Float]] = {
+    val start = System.nanoTime()
     import PythonLoaderFeatureSet._
     val interpRdd = getOrCreateInterpRdd(includePath)
     val nodeNumber = EngineRef.getNodeNumber()
@@ -752,33 +753,67 @@ object FeatureSet {
 //      Iterator.single(interp)
 //    }.count()
 
+    println("update jep code")
     import com.intel.analytics.zoo.common
     val path = Utils.listPaths(filePath)
 
     val dataPath = SparkContext.getOrCreate().parallelize(path, interpRdd.getNumPartitions)
 
+//    val sampleRDD = interpRdd.zipPartitions(dataPath){(iterpIter, pathIter) =>
+//      val interp = iterpIter.next()
+//      import java.util.{ArrayList => JArrayList}
+//      val data = ArrayBuffer[JArrayList[util.Collection[AnyRef]]]()
+//      while(!pathIter.isEmpty) {
+//        val path = pathIter.next()
+//        interp.eval("from ARMemNet.preprocess import parse_hdfs_csv, get_feature_label_list")
+//        interp.eval(s"data = parse_hdfs_csv('${path}')")
+//        interp.eval(s"result = get_feature_label_list(data)")
+//        data.append(interp.getValue("result").asInstanceOf[JArrayList[util.Collection[AnyRef]]])
+//      }
+//
+//      import scala.collection.JavaConverters._
+//      val record = data.toArray.flatMap(_.asScala)
+//      val sample = record.map {x =>
+//        val features = x.asScala.head.asInstanceOf[JList[NDArray[_]]].asScala.map(ndArrayToTensor(_))
+//        val label = ndArrayToTensor(x.asScala.last.asInstanceOf[NDArray[_]])
+//        Sample[Float](features.toArray, label)
+//      }
+//
+//      sample.iterator
+//    }
+
     val sampleRDD = interpRdd.zipPartitions(dataPath){(iterpIter, pathIter) =>
       val interp = iterpIter.next()
       import java.util.{ArrayList => JArrayList}
-      val data = ArrayBuffer[JArrayList[util.Collection[AnyRef]]]()
-      while(!pathIter.isEmpty) {
-        val path = pathIter.next()
-        interp.eval("from ARMemNet.preprocess import parse_hdfs_csv, get_feature_label_list")
-        interp.eval(s"data = parse_hdfs_csv('${path}')")
-        interp.eval(s"result = get_feature_label_list(data)")
-        data.append(interp.getValue("result").asInstanceOf[JArrayList[util.Collection[AnyRef]]])
-      }
 
       import scala.collection.JavaConverters._
-      val record = data.toArray.flatMap(_.asScala)
+      val path = pathIter.mkString(",")
+
+      if (prefix) {
+        interp.eval("from ARMemNet.preprocess import parse_csv")
+        interp.eval(s"result = parse_csv('${path}')")
+      } else {
+        interp.eval("from preprocess import parse_csv")
+        interp.eval(s"result = parse_csv('${path}')")
+      }
+
+      val t = interp.getValue("result")
+      val record = t.asInstanceOf[JArrayList[util.Collection[AnyRef]]].asScala
+
       val sample = record.map {x =>
-        val features = x.asScala.head.asInstanceOf[JList[NDArray[_]]].asScala.map(ndArrayToTensor(_))
-        val label = ndArrayToTensor(x.asScala.last.asInstanceOf[NDArray[_]])
-        Sample[Float](features.toArray, label)
+        val iter = x.iterator()
+        val features = toArrayTensor(iter.next())
+        val labels = toArrayTensor(iter.next()).head
+        Sample(features, labels)
       }
 
       sample.iterator
     }
+
+//    sampleRDD.count()
+//    val end = System.nanoTime()
+//    val time = (end - start) / 1e9
+//    println(s"Elapse $time s")
 
     FeatureSet.rdd(sampleRDD)
   }
