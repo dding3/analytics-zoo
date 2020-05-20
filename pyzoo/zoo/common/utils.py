@@ -21,7 +21,7 @@ import tempfile
 import uuid
 import shutil
 
-from urllib.parse import urlparse
+# from urllib.parse import urlparse
 
 
 def convert_to_safe_path(input_path, follow_symlinks=True):

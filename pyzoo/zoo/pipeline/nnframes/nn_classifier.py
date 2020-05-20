@@ -588,7 +588,7 @@ class XGBClassifierModel:
     '''
 
     def __init__(self, jvalue):
-        super(XGBClassifierModel, self).__init__()
+        # super(XGBClassifierModel, self).__init__()
         assert jvalue is not None
         self.value = jvalue
 
