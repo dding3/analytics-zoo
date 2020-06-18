@@ -20,6 +20,68 @@ import cv2
 from zoo.common.nncontext import init_nncontext
 from zoo.models.image.objectdetection import *
 
+from pyspark.sql import SparkSession
+
+file_path = "/home/ding/proj/AsiaInfo/huying/"
+base_data_path = file_path + "new_beijing_telecom_gongcan.csv"
+data_path = file_path + "test.csv"
+
+spark = SparkSession \
+    .builder \
+    .getOrCreate()
+base_data = spark.read.csv(base_data_path, sep=",", inferSchema=True, header=True)
+base_data = base_data.withColumnRenamed("src_eci", "CellID")
+new_data = base_data.na.drop()
+data = spark.read.csv(data_path, sep=",", inferSchema=True, header=True)
+filter_data = data.filter((data.Longitude > 115.5) & (data.Longitude < 117.5)
+                          & (data.Latitude > 39.5) & (data.Latitude < 41))
+join_data = filter_data.join(new_data, on=["CellID"], how="inner").drop("CellID")
+
+from pyspark.ml.linalg import Vectors
+from pyspark.ml.feature import VectorAssembler
+
+
+assembler = VectorAssembler(
+    inputCols=["base_lon","base_lat","base_angle","NC1PCI","NC1Freq","NC2PCI","NC2Freq","SCRSRP","NC1RSRP","NC2RSRP"],
+    outputCol="features")
+
+df = assembler.transform(join_data).select("features", "Longitude", "Latitude")
+
+from pyspark.ml.feature import MinMaxScaler
+from pyspark.ml.linalg import Vectors
+
+scaler = MinMaxScaler(inputCol="features", outputCol="scaled")
+
+# Compute summary statistics and generate MinMaxScalerModel
+scalerModel = scaler.fit(df)
+scaledData = scalerModel.transform(df)
+
+train, test = scaledData.randomSplit([0.8, 0.2])
+params = {"n_estimators":500,
+      "max_depth" : 50,
+      "n_jobs" : -1,
+      "tree_method" : "hist",
+      "random_state" : 2,
+      "learning_rate" : 0.1,
+      "min_child_weight" : 1,
+      "seed" : 0,
+      "subsample" : 0.8,
+      "colsample_bytree" : 0.8,
+      "gamma" : 0,
+      "reg_alpha" : 0,
+      "reg_lambda" : 1,
+      "verbosity" : 0,
+      "num_workers" : spark.sparkContext.defaultParallelism}
+
+from zoo.pipeline.nnframes import *
+xgbrf0 = XGBRegressor(params).setFeaturesCol("scaled").setLabelCol("Longitude")
+xgbrf1 = XGBRegressor(params).setFeaturesCol("scaled").setLabelCol("Latitude")
+
+xgbRegressorModel0 = xgbrf0.fit(train)
+xgbRegressorModel1 = xgbrf1.fit(train)
+t=0
+
+
 
 sc = init_nncontext("Object Detection Example")
 

@@ -32,7 +32,7 @@ import com.intel.analytics.zoo.feature.image._
 import com.intel.analytics.zoo.pipeline.api.keras.ZooSpecHelper
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.SparkContext
-import org.apache.spark.ml.feature.MinMaxScaler
+import org.apache.spark.ml.feature.{MinMaxScaler, VectorAssembler}
 import org.apache.spark.ml.param.ParamMap
 import org.apache.spark.ml.{Pipeline, PipelineModel}
 import org.apache.spark.mllib.linalg.Vectors
@@ -409,7 +409,7 @@ class NNClassifierSpec extends ZooSpecHelper {
   }
 
   "XGBClassifierModel" should "work with sparse features" in {
-    val path = getClass.getClassLoader.getResource("XGBClassifier").getPath
+    val path = getClass.getClassLoader.getResource("XGBoost").getPath
     val filePath = path + "/test.csv"
     val modelPath = path + "/XGBClassifer.bin"
     val spark = SparkSession.builder().getOrCreate()
@@ -424,7 +424,7 @@ class NNClassifierSpec extends ZooSpecHelper {
   }
 
   "XGBClassifierModel" should "work with dense features" in {
-    val path = getClass.getClassLoader.getResource("XGBClassifier").getPath
+    val path = getClass.getClassLoader.getResource("XGBoost").getPath
     val filePath = path + "/iris.data"
     val modelPath = path + "/XGBClassifer.bin"
 
@@ -440,6 +440,76 @@ class NNClassifierSpec extends ZooSpecHelper {
     val model = XGBClassifierModel.load(modelPath, 2)
     model.setFeaturesCol(Array("sepal length", "sepal width", "petal length", "petal width"))
     model.transform(df).count()
+  }
+
+  "XGBRegressor" should "work" in {
+    val spark = SparkSession.builder().getOrCreate()
+    val filePath = "/home/ding/proj/AsiaInfo/huying/"
+    val baseDataPath = filePath + "new_beijing_telecom_gongcan.csv"
+    val dataPath = filePath + "test.csv"
+
+    val baseData = spark.read.format("csv")
+      .option("sep", ",")
+      .option("inferSchema", "true")
+      .option("header", "true")
+      .load(baseDataPath)
+      .withColumnRenamed("src_eci", "CellID")
+    val newData = baseData.na.drop()
+    val data = spark.read.format("csv")
+      .option("sep", ",")
+      .option("inferSchema", "true")
+      .option("header", "true")
+      .load(dataPath)
+
+
+    val filterData = data.filter(data("Longitude") > 115.5 &&
+      data("Longitude") < 117.5 && data("Latitude") > 39.5 &&
+      data("Latitude") < 41)
+
+    val joinData = filterData.join(newData, filterData("CellID") ===  baseData("CellID")).drop("CellID")
+
+    val vectorAssembler = new VectorAssembler()
+      .setInputCols(Array("base_lon","base_lat","base_angle","NC1PCI","NC1Freq","NC2PCI","NC2Freq",
+        "SCRSRP","NC1RSRP","NC2RSRP"))
+      .setOutputCol("features")
+    val df = vectorAssembler.transform(joinData).select("features", "Longitude", "Latitude")
+
+    val scaler = new MinMaxScaler().setInputCol("features").setOutputCol("scaled")
+    val scalerModel = scaler.fit(df)
+    val scaledData = scalerModel.transform(df)
+
+    val trainTest = scaledData.randomSplit(Array(0.8, 0.2))
+    val train = trainTest(0)
+    val test = trainTest(1)
+
+    val xgbParam = Map("n_estimators" -> 500,
+      "max_depth" -> 50,
+      "n_jobs" -> -1,
+      "tree_method" -> "hist",
+      "random_state" -> 2,
+      "learning_rate" -> 0.1,
+      "min_child_weight" -> 1,
+      "seed" -> 0,
+      "subsample" -> 0.8,
+      "colsample_bytree" -> 0.8,
+      "gamma" -> 0,
+      "reg_alpha" -> 0,
+      "reg_lambda" -> 1,
+      "verbosity" -> 0,
+      "num_workers" -> spark.sparkContext.defaultParallelism
+    )
+    val xgbRf0 = new XGBRegressor(xgbParam).
+      setFeaturesCol(Array("scaled")).
+      setLabelCol("Longitude")
+    val xgbRf1 = new XGBRegressor(xgbParam).
+      setFeaturesCol(Array("scaled")).
+      setLabelCol("Latitude")
+
+    val xgbRegressorModel0 = xgbRf0.fit(train)
+    val xgbRegressorModel1 = xgbRf1.fit(train)
+
+    val t = xgbRegressorModel0.transform(train)
+    t.show(10)
   }
 }
 

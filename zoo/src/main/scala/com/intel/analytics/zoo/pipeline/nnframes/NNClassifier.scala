@@ -22,7 +22,8 @@ import com.intel.analytics.bigdl.tensor.TensorNumericMath.TensorNumeric
 import com.intel.analytics.bigdl.{Criterion, Module}
 import com.intel.analytics.zoo.feature.common._
 import com.intel.analytics.zoo.pipeline.nnframes.NNModel.NNModelWriter
-import ml.dmlc.xgboost4j.scala.spark.{XGBoostClassificationModel, XGBoostHelper}
+import ml.dmlc.xgboost4j.scala.spark.{XGBoostClassificationModel, XGBoostHelper,
+XGBoostRegressor, XGBoostRegressionModel}
 import org.apache.spark.ml.DefaultParamsWriterWrapper
 import org.apache.spark.ml.adapter.SchemaUtils
 import org.apache.spark.ml.feature.VectorAssembler
@@ -361,3 +362,82 @@ object XGBClassifierModel {
     new XGBClassifierModel(XGBoostHelper.load(path, numClass))
   }
 }
+
+class XGBRegressor (private val xgboostParams: Map[String, Any]) {
+
+  private val model = new XGBoostRegressor(xgboostParams)
+  private var featuresColName: Array[String] = null
+
+  def setFeaturesCol(featuresColName: Array[String]): this.type = {
+    this.featuresColName = featuresColName
+    this
+  }
+
+  def setLabelCol(labelColName : String) : this.type = {
+    model.setLabelCol(labelColName)
+    this
+  }
+
+  def fit(df: DataFrame): XGBRegressorModel = {
+    require(featuresColName != null, "Please call setFeaturesCol before training model")
+    val trainDf = if (featuresColName.length > 1) {
+      val featureVectorAssembler = new VectorAssembler()
+        .setInputCols(featuresColName)
+        .setOutputCol("zooFeatures")
+      featureVectorAssembler.transform(df)
+    } else {
+      df.withColumnRenamed(featuresColName.head, "zooFeatures")
+    }
+
+    val xgbModel = model.fit(trainDf)
+    model.setFeaturesCol("zooFeatures")
+    new XGBRegressorModel(xgbModel)
+  }
+}
+
+class XGBRegressorModel private[zoo](val model: XGBoostRegressionModel) {
+  private var featuresCols: Array[String] = Array(model.getFeaturesCol)
+  private var predictionCol: String = null
+
+  def setFeaturesCol(featuresColName: Array[String]): this.type = {
+    require(featuresCols != null,
+      s"model already has feature columns ${featuresCols.mkString(" ")}")
+    featuresCols = featuresColName
+    this
+  }
+
+  def setPredictionCol(value: String): this.type = {
+    predictionCol = value
+    this
+  }
+
+  def setInferBatchSize(value: Int): this.type = {
+    model.setInferBatchSize(value)
+    this
+  }
+
+  def transform(dataset: DataFrame): DataFrame = {
+    require(featuresCols!=null, "Please set feature columns before transform")
+    val featureVectorAssembler = new VectorAssembler()
+      .setInputCols(featuresCols)
+      .setOutputCol("featureAssembledVector")
+    val assembledDF = featureVectorAssembler.transform(dataset)
+
+    import org.apache.spark.sql.functions.{col, udf}
+    import org.apache.spark.ml.linalg.Vector
+    val asDense = udf((v: Vector) => v.toDense)
+    val xgbInput = assembledDF.withColumn("DenseFeatures", asDense(col("featureAssembledVector")))
+    model.setFeaturesCol("DenseFeatures")
+    var output = model.transform(xgbInput).drop("DenseFeatures", "featureAssembledVector")
+    if(predictionCol != null) {
+      output = output.withColumnRenamed("prediction", predictionCol)
+    }
+    output
+  }
+}
+
+//object XGBRegressorModel {
+//  def load(path: String): XGBClassifierModel = {
+//    new XGBRegressorModel(XGBoostHelper.load(path))
+//  }
+//}

@@ -611,3 +611,51 @@ class XGBClassifierModel:
         """
         jvalue = callZooFunc("float", "loadXGBClassifierModel", path, numClasses)
         return XGBClassifierModel(jvalue=jvalue)
+
+
+class XGBRegressorModel:
+    '''
+    XGBRegressorModel is a trained XGBoost regressor model. The prediction column
+    will have the prediction results.
+    '''
+
+    def __init__(self, jvalue):
+        super(XGBRegressorModel, self).__init__()
+        assert jvalue is not None
+        self.value = jvalue
+
+    def setFeaturesCol(self, features):
+        callZooFunc("float", "setFeaturesXGBRegressorModel", self.value, features)
+
+    def setPredictionCol(self, prediction):
+        callZooFunc("float", "setPredictionXGBRegressorModel", self.value, prediction)
+
+    def transform(self, dataset):
+        df = callZooFunc("float", "transformXGBRegressorModel", self.value, dataset)
+        return df
+
+    @staticmethod
+    def loadModel(path):
+        """
+        load a pretrained XGBoostRegressorModel
+        :param path: pretrained model path
+        """
+        jvalue = callZooFunc("float", "loadXGBRegressorModel", path)
+        return XGBRegressorModel(jvalue=jvalue)
+
+
+class XGBRegressor:
+    def __init__(self, params):
+        super(XGBRegressor, self).__init__()
+        self.value = callZooFunc("float", "createXGBRRegressor", params)
+        self
+
+    def setFeaturesCol(self, features):
+        callZooFunc("float", "setFeaturesXGBRegressor", self.value, features)
+
+    def setLabelCol(self, label):
+        callZooFunc("float", "setLabelXGBRegressor", self.value, label)
+
+    def fit(self, dataset):
+        jvalue = callZooFunc("float", "fitXGBRegressor", self.value, dataset)
+        return XGBRegressorModel(jvalue)

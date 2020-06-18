@@ -251,4 +251,34 @@ class PythonNNFrames[T: ClassTag](implicit ev: TensorNumeric[T]) extends PythonZ
                                         dataset: DataFrame): DataFrame = {
     model.transform(dataset)
   }
+
+  def createXGBRRegressor(params: ): XGBRegressor = {
+
+  }
+
+  def setFeaturesXGBRegressorModel(model: XGBRegressorModel,
+                                    features: JList[String]): Unit = {
+    model.setFeaturesCol(features.asScala.toArray)
+  }
+
+  def setPredictionXGBRegressorModel(model: XGBRegressorModel,
+                                      prediction: String): Unit = {
+    model.setPredictionCol(prediction)
+  }
+
+  def transformXGBRegressorModel(model: XGBRegressorModel, dataset: DataFrame): DataFrame = {
+    model.transform(dataset)
+  }
+
+  def setFeaturesXGBRegressor(model: XGBRegressor, features: JList[String]): Unit = {
+    model.setFeaturesCol(features.asScala.toArray)
+  }
+
+  def setLabelXGBRegressor(model: XGBRegressor, label: String): Unit = {
+    model.setLabelCol(label)
+  }
+
+  def fitXGBRegressor(model: XGBRegressor, dataset: DataFrame): XGBRegressorModel = {
+    model.fit(dataset)
+  }
 }
