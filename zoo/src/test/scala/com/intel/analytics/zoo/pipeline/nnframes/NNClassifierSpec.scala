@@ -30,6 +30,7 @@ import com.intel.analytics.bigdl.visualization.{TrainSummary, ValidationSummary}
 import com.intel.analytics.zoo.feature.common._
 import com.intel.analytics.zoo.feature.image._
 import com.intel.analytics.zoo.pipeline.api.keras.ZooSpecHelper
+import ml.dmlc.xgboost4j.scala.spark.{XGBoostHelper, XGBoostRegressionModel, XGBoostRegressor}
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.SparkContext
 import org.apache.spark.ml.feature.{MinMaxScaler, VectorAssembler}
@@ -466,51 +467,372 @@ class NNClassifierSpec extends ZooSpecHelper {
       data("Longitude") < 117.5 && data("Latitude") > 39.5 &&
       data("Latitude") < 41)
 
-    val joinData = filterData.join(newData, filterData("CellID") ===  baseData("CellID")).drop("CellID")
+    var joinData = filterData.join(newData, filterData("CellID") ===  baseData("CellID"))
+      .select("base_lon","base_lat","base_angle","NC1PCI","NC1Freq","NC2PCI","NC2Freq",
+      "SCRSRP","NC1RSRP","NC2RSRP", "Longitude", "Latitude")
 
+    val columns = Array("base_lon","base_lat","base_angle","NC1PCI","NC1Freq","NC2PCI","NC2Freq",
+      "SCRSRP","NC1RSRP","NC2RSRP")
+
+
+    for(i <- 0 until columns.length) {
+      val column = columns(i)
+      val vectorAssembler2 = new VectorAssembler()
+        .setInputCols(Array(column))
+        .setOutputCol(column + "vec")
+      joinData = vectorAssembler2.transform(joinData)
+      val scaler2 = new MinMaxScaler().setInputCol(column + "vec").setOutputCol(column + "scaled")
+      val model2 = scaler2.fit(joinData)
+      joinData = model2.transform(joinData)
+    }
+    val df2 = joinData.select("Longitude", "Latitude", "base_lonscaled","base_latscaled","base_anglescaled",
+      "NC1PCIscaled","NC1Freqscaled","NC2PCIscaled","NC2Freqscaled",
+      "SCRSRPscaled","NC1RSRPscaled","NC2RSRPscaled")
+
+    val aColumns = Array("base_lonscaled","base_latscaled","base_anglescaled",
+      "NC1PCIscaled","NC1Freqscaled","NC2PCIscaled","NC2Freqscaled",
+      "SCRSRPscaled","NC1RSRPscaled","NC2RSRPscaled")
     val vectorAssembler = new VectorAssembler()
-      .setInputCols(Array("base_lon","base_lat","base_angle","NC1PCI","NC1Freq","NC2PCI","NC2Freq",
-        "SCRSRP","NC1RSRP","NC2RSRP"))
+      .setInputCols(aColumns)
       .setOutputCol("features")
-    val df = vectorAssembler.transform(joinData).select("features", "Longitude", "Latitude")
+    val df = vectorAssembler.transform(df2).select("features", "Longitude", "Latitude").cache()
+//
+//    val scaler = new MinMaxScaler().setInputCol("features_vec").setOutputCol("features")
+//    val scalerModel = scaler.fit(df)
+//    val scaledData = scalerModel.transform(df).cache()
 
-    val scaler = new MinMaxScaler().setInputCol("features").setOutputCol("scaled")
-    val scalerModel = scaler.fit(df)
-    val scaledData = scalerModel.transform(df)
-
-    val trainTest = scaledData.randomSplit(Array(0.8, 0.2))
+    val trainTest = df.randomSplit(Array(0.8, 0.2))
     val train = trainTest(0)
     val test = trainTest(1)
 
-    val xgbParam = Map("n_estimators" -> 500,
-      "max_depth" -> 50,
-      "n_jobs" -> -1,
-      "tree_method" -> "hist",
-      "random_state" -> 2,
-      "learning_rate" -> 0.1,
-      "min_child_weight" -> 1,
-      "seed" -> 0,
-      "subsample" -> 0.8,
-      "colsample_bytree" -> 0.8,
-      "gamma" -> 0,
-      "reg_alpha" -> 0,
-      "reg_lambda" -> 1,
-      "verbosity" -> 0,
-      "num_workers" -> spark.sparkContext.defaultParallelism
-    )
-    val xgbRf0 = new XGBRegressor(xgbParam).
-      setFeaturesCol(Array("scaled")).
+    val xgbRf0 = new XGBRegressor().
       setLabelCol("Longitude")
-    val xgbRf1 = new XGBRegressor(xgbParam).
-      setFeaturesCol(Array("scaled")).
+    val xgbRf1 = new XGBRegressor().
       setLabelCol("Latitude")
 
     val xgbRegressorModel0 = xgbRf0.fit(train)
     val xgbRegressorModel1 = xgbRf1.fit(train)
 
-    val t = xgbRegressorModel0.transform(train)
-    t.show(10)
+    val y0 = xgbRegressorModel0.transform(test)
+    val y1 = xgbRegressorModel1.transform(test)
+
+    y0.show()
+    y1.show()
+
+    val modelPath = "/home/ding/proj/AsiaInfo/huying/"
+    xgbRegressorModel0.save(modelPath + "0.model")
+    xgbRegressorModel1.save(modelPath + "1.model")
+
+    val model0 = XGBRegressorModel.load(modelPath + "0.model")
+    val model1 = XGBRegressorModel.load(modelPath + "1.model")
+    y0.show()
+    y1.show()
+
+    val y0_0 = model0.transform(test)
+    val y1_1 = model1.transform(test)
+
+    y0_0.show()
+    y1_1.show()
   }
+
+  "xgbregressor" should "correct" in {
+    val spark = SparkSession.builder().getOrCreate()
+    val baseDataPath = "/home/ding/proj/AsiaInfo/huying/new_beijing_telecom_gongcan.csv"
+    val dataPath = "/home/ding/proj/AsiaInfo/huying/test.csv"
+    val numRounds = 5
+
+    val baseData = spark.read.format("csv")
+      .option("sep", ",")
+      .option("inferSchema", "true")
+      .option("header", "true")
+      .load(baseDataPath)
+      .withColumnRenamed("src_eci", "CellID")
+    val newData = baseData.na.drop()
+    val data = spark.read.format("csv")
+      .option("sep", ",")
+      .option("inferSchema", "true")
+      .option("header", "true")
+      .load(dataPath)
+
+
+    val filterData = data.filter(data("Longitude") > 115.5 &&
+      data("Longitude") < 117.5 && data("Latitude") > 39.5 &&
+      data("Latitude") < 41)
+
+    val joinData = filterData.join(newData, "CellID").select("base_lon","base_lat",
+      "base_angle","NC1PCI","NC1Freq","NC2PCI","NC2Freq", "SCRSRP","NC1RSRP","NC2RSRP",
+      "Longitude", "Latitude")
+
+    //    val columns1 = Array("base_angle","NC1PCI","NC1Freq", "NC2Freq")
+    //    val columns = Array("base_lon","base_lat","NC2PCI",
+    //      "SCRSRP","NC1RSRP","NC2RSRP") ++ columns1
+
+
+    //    joinData = joinData.withColumn("base_angle", when(col("base_angle") === 0, 0.0))
+    //    joinData = joinData.withColumn("NC1PCI", when(col("NC1PCI") === 279, 0.0))
+    //    joinData = joinData.withColumn("NC1Freq", when(col("NC1Freq") === 100, 0.0))
+    //    joinData = joinData.withColumn("NC2Freq", when(col("NC2Freq") === 100, 0.0))
+    //    for (i <- 0 until columns1.length) {
+    //      val column = columns1(i)
+    //
+    //      val vectorAssembler2 = new VectorAssembler()
+    //        .setInputCols(Array(column))
+    //        .setOutputCol(column + "scaled")
+    //      joinData = vectorAssembler2.transform(joinData)
+    //    }
+
+
+    //    for(i <- 0 until columns.length) {
+    //      val column = columns(i)
+    //      val vectorAssembler2 = new VectorAssembler()
+    //        .setInputCols(Array(column))
+    //        .setOutputCol(column + "vec")
+    //      joinData = vectorAssembler2.transform(joinData)
+    //      val scaler2 = new MinMaxScaler().setInputCol(column + "vec").setOutputCol(column + "scaled")
+    //      val model2 = scaler2.fit(joinData)
+    //      joinData = model2.transform(joinData)
+    //    }
+
+    //    for(i <- 0 until columns1.length) {
+    //      import org.apache.spark.sql.functions
+    //      val column = columns1(i)
+    //      val vectorAssembler2 = new VectorAssembler()
+    //        .setInputCols(Array(column))
+    //        .setOutputCol(column + "vec")
+    //      joinData = vectorAssembler2.transform(joinData)
+    //      val scaler2 = new MinMaxScaler().setInputCol(column + "vec").setOutputCol(column + "scaled")
+    //      scaler2.setMax(0.000000000000000001)
+    //      scaler2.setMin(0.0)
+    //      val model2 = scaler2.fit(joinData)
+    //      joinData = model2.transform(joinData)
+    //      val newColumn = column + "scaled"
+    //      joinData = joinData.withColumn(newColumn, when(col(newColumn)===[0.5], [0.0]).otherwise(col(newColumn)))
+    //
+    //    }
+
+    //    val df2 = joinData.select("Longitude", "Latitude", "base_lonscaled","base_latscaled","base_anglescaled",
+    //      "NC1PCIscaled","NC1Freqscaled","NC2PCIscaled","NC2Freqscaled",
+    //      "SCRSRPscaled","NC1RSRPscaled","NC2RSRPscaled")
+
+    //    val aColumns = Array("base_lonscaled","base_latscaled","base_anglescaled",
+    //      "NC1PCIscaled","NC1Freqscaled","NC2PCIscaled","NC2Freqscaled",
+    //      "SCRSRPscaled","NC1RSRPscaled","NC2RSRPscaled")
+
+    val vectorAssembler = new VectorAssembler()
+      .setInputCols(Array("base_lon","base_lat",
+        "base_angle","NC1PCI","NC1Freq","NC2PCI","NC2Freq", "SCRSRP","NC1RSRP","NC2RSRP"))
+      .setOutputCol("features_vec")
+    val df = vectorAssembler.transform(joinData)
+
+    val scaler = new MinMaxScaler().setInputCol("features_vec").setOutputCol("features")
+    val scalerModel = scaler.fit(df)
+    val scaledData = scalerModel.transform(df).cache()
+
+    //    import org.apache.spark.sql.functions.{col, udf}
+    //    import org.apache.spark.ml.linalg.Vector
+    //    val asDense = udf((v: Vector) => v.toDense)
+    //    val xgbInput = df.withColumn("features", asDense(col("features2"))).select("features", "Longitude")
+
+    val df3 = scaledData.select("features", "Longitude", "Latitude").cache()
+    val trainTest = df3.randomSplit(Array(0.8, 0.2))
+    val train = trainTest(0)
+    val test = trainTest(1)
+
+    //    val xgbParam = Map(
+    //      "random_state" -> 2,
+    //      "learning_rate" -> 0.1,
+    //      "min_child_weight" -> 1,
+    //      "seed" -> 0,
+    //      "subsample" -> 0.8,
+    //      "colsample_bytree" -> 0.8,
+    //      "reg_alpha" -> 0,
+    //      "reg_lambda" -> 1,
+    //      "verbosity" -> 0,
+    //      "slient" -> 0,
+    //      "objective" -> "reg:squarederror",
+    //      "max_delta_step" -> 0,
+    //      "colsample_bylevel" -> 1,
+    //      "cosample_bynode" -> 0.8,
+    //      "scale_pos_weight" -> 1,
+    //      "base_score" -> 0.5,
+    //      "num_workers" -> spark.sparkContext.defaultParallelism
+    //    )
+    val xgbRf0 = new XGBoostRegressor()
+      .setFeaturesCol("features")
+      .setLabelCol("Longitude")
+    xgbRf0.setNumRound(numRounds) // n_estimators
+    xgbRf0.setMaxDepth(50) // max_depth
+    xgbRf0.setNthread(1) // n_jobs
+    xgbRf0.setTreeMethod("hist") // tree_method
+    xgbRf0.setSeed(2)  // random_state
+    xgbRf0.setEta(0.1) //learing rate
+    xgbRf0.setMinChildWeight(1) //min_child_weight
+    xgbRf0.setSubsample(0.8) //subsample
+    xgbRf0.setColsampleBytree(0.8) //colsample_bytree
+    xgbRf0.setGamma(0) // gamma
+    xgbRf0.setAlpha(0) // reg_alpha
+    xgbRf0.setLambda(1) // reg_lambda
+    xgbRf0.setNumWorkers(4)
+    //    xgbRf0.setCheckpointInterval(100)
+    //    xgbRf0.setCheckpointPath(cpPath)
+
+
+    val xgbRf1 = new XGBoostRegressor()
+      .setFeaturesCol("features")
+      .setLabelCol("Latitude")
+    xgbRf1.setNumRound(numRounds) // n_estimators
+    xgbRf1.setMaxDepth(50) // max_depth
+    xgbRf1.setNthread(1) // n_jobs
+    xgbRf1.setTreeMethod("hist") // tree_method
+    xgbRf1.setSeed(2)  // random_state
+    xgbRf1.setEta(0.1) //learing rate
+    xgbRf1.setMinChildWeight(1) //min_child_weight
+    xgbRf1.setSubsample(0.8) //subsample
+    xgbRf1.setColsampleBytree(0.8) //colsample_bytree
+    xgbRf1.setGamma(0) // gamma
+    xgbRf1.setAlpha(0) // reg_alpha
+    xgbRf1.setLambda(1) // reg_lambda
+    xgbRf1.setNumWorkers(4)
+    //    xgbRf1.setCheckpointInterval(100)
+    //    xgbRf1.setCheckpointPath(cpPath)
+
+    val xgbRegressorModel0 = xgbRf0.fit(train)
+    val xgbRegressorModel1 = xgbRf1.fit(train)
+
+
+    val predictY0 = xgbRegressorModel0.transform(test)
+      .select("Longitude", "prediction", "Latitude", "features")
+      .withColumnRenamed("prediction", "predict_Longitude")
+    predictY0.cache()
+    predictY0.show()
+
+    //    val predictY1 = xgbRegressorModel1.transform(test)
+    //    predictY1.cache()
+    //    predictY1.count()
+    //    print("predict1")
+    val predictY1 = xgbRegressorModel1.transform(predictY0)
+      .withColumnRenamed("prediction", "predict_Latitude").cache()
+    predictY1.show()
+  }
+
+  "verify predict" should "correct" in {
+    val spark = SparkSession.builder().getOrCreate()
+    val baseDataPath = "/home/ding/proj/AsiaInfo/huying/new_beijing_telecom_gongcan.csv"
+    val dataPath = "/home/ding/proj/AsiaInfo/huying/test.csv"
+    val baseData = spark.read.format("csv")
+      .option("sep", ",")
+      .option("inferSchema", "true")
+      .option("header", "true")
+      .load(baseDataPath)
+      .withColumnRenamed("src_eci", "CellID")
+    val newData = baseData.na.drop()
+    val data = spark.read.format("csv")
+      .option("sep", ",")
+      .option("inferSchema", "true")
+      .option("header", "true")
+      .load(dataPath)
+
+
+    val filterData = data.filter(data("Longitude") > 115.5 &&
+      data("Longitude") < 117.5 && data("Latitude") > 39.5 &&
+      data("Latitude") < 41)
+
+    var joinData = filterData.join(newData, "CellID").select("base_lon","base_lat",
+      "base_angle","NC1PCI","NC1Freq","NC2PCI","NC2Freq", "SCRSRP","NC1RSRP","NC2RSRP",
+      "Longitude", "Latitude")
+
+    val columns1 = Array("base_angle","NC1PCI","NC1Freq", "NC2Freq")
+    val columns = Array("base_lon","base_lat","NC2PCI",
+      "SCRSRP","NC1RSRP","NC2RSRP") ++ columns1
+
+
+    //    joinData = joinData.withColumn("base_angle", when(col("base_angle") === 0, 0.0))
+    //    joinData = joinData.withColumn("NC1PCI", when(col("NC1PCI") === 279, 0.0))
+    //    joinData = joinData.withColumn("NC1Freq", when(col("NC1Freq") === 100, 0.0))
+    //    joinData = joinData.withColumn("NC2Freq", when(col("NC2Freq") === 100, 0.0))
+    //    for (i <- 0 until columns1.length) {
+    //      val column = columns1(i)
+    //
+    //      val vectorAssembler2 = new VectorAssembler()
+    //        .setInputCols(Array(column))
+    //        .setOutputCol(column + "scaled")
+    //      joinData = vectorAssembler2.transform(joinData)
+    //    }
+
+
+    for(i <- 0 until columns.length) {
+      val column = columns(i)
+      val vectorAssembler2 = new VectorAssembler()
+        .setInputCols(Array(column))
+        .setOutputCol(column + "vec")
+      joinData = vectorAssembler2.transform(joinData)
+      val scaler2 = new MinMaxScaler().setInputCol(column + "vec").setOutputCol(column + "scaled")
+      val model2 = scaler2.fit(joinData)
+      joinData = model2.transform(joinData)
+    }
+
+    //    for(i <- 0 until columns1.length) {
+    //      import org.apache.spark.sql.functions
+    //      val column = columns1(i)
+    //      val vectorAssembler2 = new VectorAssembler()
+    //        .setInputCols(Array(column))
+    //        .setOutputCol(column + "vec")
+    //      joinData = vectorAssembler2.transform(joinData)
+    //      val scaler2 = new MinMaxScaler().setInputCol(column + "vec").setOutputCol(column + "scaled")
+    //      scaler2.setMax(0.000000000000000001)
+    //      scaler2.setMin(0.0)
+    //      val model2 = scaler2.fit(joinData)
+    //      joinData = model2.transform(joinData)
+    //      val newColumn = column + "scaled"
+    //      joinData = joinData.withColumn(newColumn, when(col(newColumn)===[0.5], [0.0]).otherwise(col(newColumn)))
+    //
+    //    }
+
+    //    val df2 = joinData.select("Longitude", "Latitude", "base_lonscaled","base_latscaled","base_anglescaled",
+    //      "NC1PCIscaled","NC1Freqscaled","NC2PCIscaled","NC2Freqscaled",
+    //      "SCRSRPscaled","NC1RSRPscaled","NC2RSRPscaled")
+
+    //    val aColumns = Array("base_lonscaled","base_latscaled","base_anglescaled",
+    //      "NC1PCIscaled","NC1Freqscaled","NC2PCIscaled","NC2Freqscaled",
+    //      "SCRSRPscaled","NC1RSRPscaled","NC2RSRPscaled")
+
+    val vectorAssembler = new VectorAssembler()
+      .setInputCols(Array("base_lonscaled","base_latscaled",
+        "base_anglescaled","NC1PCIscaled","NC1Freqscaled","NC2PCIscaled","NC2Freqscaled",
+        "SCRSRPscaled","NC1RSRPscaled","NC2RSRPscaled"))
+      .setOutputCol("features")
+    val df = vectorAssembler.transform(joinData)
+
+    //        val scaler = new MinMaxScaler().setInputCol("features_vec").setOutputCol("features")
+    //        val scalerModel = scaler.fit(df)
+    //        val scaledData = scalerModel.transform(df).cache()
+
+    //    import org.apache.spark.sql.functions.{col, udf}
+    //    import org.apache.spark.ml.linalg.Vector
+    //    val asDense = udf((v: Vector) => v.toDense)
+    //    val xgbInput = df.withColumn("features", asDense(col("features2"))).select("features", "Longitude")
+
+    val df3 = df.select("features", "Longitude", "Latitude").cache()
+//    val trainTest = df3.randomSplit(Array(0.8, 0.2))
+//    val train = trainTest(0)
+//    val test = trainTest(1)
+
+    val xgbRegressorModel0 = XGBRegressorModel.loadFromXGB("/home/ding/proj/AsiaInfo/new/huying/xgbregressor0.model")
+    val xgbRegressorModel1 = XGBRegressorModel.loadFromXGB("/home/ding/proj/AsiaInfo/new/huying/xgbregressor1.model")
+
+
+    val predictY0 = xgbRegressorModel0.transform(df3)
+      .select("Longitude", "prediction", "Latitude", "features")
+      .withColumnRenamed("prediction", "predict_Longitude")
+    predictY0.cache()
+    predictY0.show()
+
+    val predictY1 = xgbRegressorModel1.transform(predictY0)
+      .withColumnRenamed("prediction", "predict_Latitude").cache()
+    predictY1.show()
+  }
+
+
 }
 
 private case class Data(label: Double, features: Array[Double])

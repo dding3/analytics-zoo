@@ -363,49 +363,204 @@ object XGBClassifierModel {
   }
 }
 
-class XGBRegressor (private val xgboostParams: Map[String, Any]) {
+/**
+ * [[XGBRegressor]] xgboost wrapper of XGBRegressor.
+ */
+class XGBRegressor () {
 
-  private val model = new XGBoostRegressor(xgboostParams)
-  private var featuresColName: Array[String] = null
-
-  def setFeaturesCol(featuresColName: Array[String]): this.type = {
-    this.featuresColName = featuresColName
-    this
-  }
+  private val model = new XGBoostRegressor()
 
   def setLabelCol(labelColName : String) : this.type = {
     model.setLabelCol(labelColName)
     this
   }
 
-  def fit(df: DataFrame): XGBRegressorModel = {
-    require(featuresColName != null, "Please call setFeaturesCol before training model")
-    val trainDf = if (featuresColName.length > 1) {
-      val featureVectorAssembler = new VectorAssembler()
-        .setInputCols(featuresColName)
-        .setOutputCol("zooFeatures")
-      featureVectorAssembler.transform(df)
-    } else {
-      df.withColumnRenamed(featuresColName.head, "zooFeatures")
-    }
-
-    val xgbModel = model.fit(trainDf)
-    model.setFeaturesCol("zooFeatures")
-    new XGBRegressorModel(xgbModel)
-  }
-}
-
-class XGBRegressorModel private[zoo](val model: XGBoostRegressionModel) {
-  private var featuresCols: Array[String] = Array(model.getFeaturesCol)
-  private var predictionCol: String = null
-
-  def setFeaturesCol(featuresColName: Array[String]): this.type = {
-    require(featuresCols != null,
-      s"model already has feature columns ${featuresCols.mkString(" ")}")
-    featuresCols = featuresColName
+  def setFeaturesCol(featuresColName: String): this.type = {
+    model.setFeaturesCol(featuresColName)
     this
   }
 
+  def fit(df: DataFrame): XGBRegressorModel = {
+    val xgbModel = model.fit(df)
+    new XGBRegressorModel(xgbModel)
+  }
+
+  def setNumRound(value: Int): this.type = {
+    model.setNumWorkers(value)
+    this
+  }
+
+  def setNumWorkers(value: Int): this.type = {
+    model.setNumWorkers(value)
+    this
+  }
+
+  def setNthread(value: Int): this.type = {
+    model.setNthread(value)
+    this
+  }
+
+  def setSilent(value: Int): this.type = {
+    model.setSilent(value)
+    this
+  }
+
+  def setMissing(value: Float): this.type = {
+    model.setMissing(value)
+    this
+  }
+
+  def setCheckpointPath(value: String): this.type = {
+    model.setCheckpointPath(value)
+    this
+  }
+
+  def setCheckpointInterval(value: Int): this.type = {
+    model.setCheckpointInterval(value)
+    this
+  }
+
+  def setSeed(value: Long): this.type = {
+    model.setSeed(value)
+    this
+  }
+
+  def setEta(value: Double): this.type = {
+    model.setEta(value)
+    this
+  }
+
+  def setGamma(value: Double): this.type = {
+    model.setGamma(value)
+    this
+  }
+
+  def setMaxDepth(value: Int): this.type = {
+    model.setMaxDepth(value)
+    this
+  }
+
+  def setMinChildWeight(value: Double): this.type = {
+    model.setMinChildWeight(value)
+    this
+  }
+
+  def setMaxDeltaStep(value: Double): this.type = {
+    model.setMaxDeltaStep(value)
+    this
+  }
+
+  def setColsampleBytree(value: Double): this.type = {
+    model.setColsampleBytree(value)
+    this
+  }
+
+  def setColsampleBylevel(value: Double): this.type = {
+    model.setColsampleBylevel(value)
+    this
+  }
+
+  def setLambda(value: Double): this.type = {
+    model.setLambda(value)
+    this
+  }
+
+  def setAlpha(value: Double): this.type = {
+    model.setAlpha(value)
+    this
+  }
+
+  def setTreeMethod(value: String): this.type = {
+    model.setTreeMethod(value)
+    this
+  }
+
+  def setGrowPolicy(value: String): this.type = {
+    model.setGrowPolicy(value)
+    this
+  }
+
+  def setMaxBins(value: Int): this.type = {
+    model.setMaxBins(value)
+    this
+  }
+
+  def setMaxLeaves(value: Int): this.type = {
+    model.setMaxLeaves(value)
+    this
+  }
+
+  def setSketchEps(value: Double): this.type = {
+    model.setSketchEps(value)
+    this
+  }
+
+  def setScalePosWeight(value: Double): this.type = {
+    model.setScalePosWeight(value)
+    this
+  }
+
+  def setSampleType(value: String): this.type = {
+    model.setSampleType(value)
+    this
+  }
+
+  def setNormalizeType(value: String): this.type = {
+    model.setNormalizeType(value)
+    this
+  }
+
+  def setRateDrop(value: Double): this.type = {
+    model.setRateDrop(value)
+    this
+  }
+
+  def setSkipDrop(value: Double): this.type = {
+    model.setSkipDrop(value)
+    this
+  }
+
+  def setLambdaBias(value: Double): this.type = {
+    model.setLambdaBias(value)
+    this
+  }
+
+  def setObjective(value: String): this.type = {
+    model.setObjective(value)
+    this
+  }
+
+  def setObjectiveType(value: String): this.type = {
+    model.setObjectiveType(value)
+    this
+  }
+
+  def setBaseScore(value: Double): this.type = {
+    model.setBaseScore(value)
+    this
+  }
+
+  def setEvalMetric(value: String): this.type = {
+    model.setEvalMetric(value)
+    this
+  }
+
+  def setNumEarlyStoppingRounds(value: Int): this.type = {
+    model.setNumEarlyStoppingRounds(value)
+    this
+  }
+
+  def setMaximizeEvaluationMetrics(value: Boolean): this.type = {
+    model.setMaximizeEvaluationMetrics(value)
+    this
+  }
+}
+
+/**
+ * [[XGBRegressorModel]] xgboost wrapper of XGBRegressorModel.
+ */
+class XGBRegressorModel private[zoo](val model: XGBoostRegressionModel) {
+  var predictionCol: String = null
   def setPredictionCol(value: String): this.type = {
     predictionCol = value
     this
@@ -417,27 +572,30 @@ class XGBRegressorModel private[zoo](val model: XGBoostRegressionModel) {
   }
 
   def transform(dataset: DataFrame): DataFrame = {
-    require(featuresCols!=null, "Please set feature columns before transform")
-    val featureVectorAssembler = new VectorAssembler()
-      .setInputCols(featuresCols)
-      .setOutputCol("featureAssembledVector")
-    val assembledDF = featureVectorAssembler.transform(dataset)
-
-    import org.apache.spark.sql.functions.{col, udf}
-    import org.apache.spark.ml.linalg.Vector
-    val asDense = udf((v: Vector) => v.toDense)
-    val xgbInput = assembledDF.withColumn("DenseFeatures", asDense(col("featureAssembledVector")))
-    model.setFeaturesCol("DenseFeatures")
-    var output = model.transform(xgbInput).drop("DenseFeatures", "featureAssembledVector")
+    var output = model.transform(dataset)
     if(predictionCol != null) {
       output = output.withColumnRenamed("prediction", predictionCol)
     }
     output
   }
+
+  def save(path: String): Unit = {
+    model.write.overwrite().save(path)
+  }
 }
 
-//object XGBRegressorModel {
-//  def load(path: String): XGBClassifierModel = {
-//    new XGBRegressorModel(XGBoostHelper.load(path))
-//  }
-//}
+object XGBRegressorModel {
+  /**
+   * Load pretrained Zoo XGBRegressorModel.
+   */
+  def load(path: String): XGBRegressorModel = {
+    new XGBRegressorModel(XGBoostRegressionModel.load(path))
+  }
+
+  /**
+   * Load pretrained xgboost XGBoostRegressionModel.
+   */
+  def loadFromXGB(path: String): XGBRegressorModel = {
+    new XGBRegressorModel(XGBoostHelper.load(path))
+  }
+}
