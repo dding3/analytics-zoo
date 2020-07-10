@@ -386,7 +386,7 @@ class XGBRegressor () {
   }
 
   def setNumRound(value: Int): this.type = {
-    model.setNumWorkers(value)
+    model.setNumRound(value)
     this
   }
 
@@ -532,6 +532,11 @@ class XGBRegressor () {
 
   def setObjectiveType(value: String): this.type = {
     model.setObjectiveType(value)
+    this
+  }
+
+  def setSubsample(value: Double): this.type = {
+    model.setSubsample(value)
     this
   }
 
