@@ -363,8 +363,8 @@ class TimeSequenceFeatureTransformer(BaseFeatureTransformer):
         # check NaT in datetime
         input_df = input_df.reset_index()
         dt = input_df[self.dt_col]
-        if not np.issubdtype(dt, np.datetime64):
-            raise ValueError("The dtype of datetime column is required to be np.datetime64!")
+        #if not np.issubdtype(dt, np.datetime64):
+        #    raise ValueError("The dtype of datetime column is required to be np.datetime64!")
         is_nat = pd.isna(dt)
         if is_nat.any(axis=None):
             raise ValueError("Missing datetime in input dataframe!")
