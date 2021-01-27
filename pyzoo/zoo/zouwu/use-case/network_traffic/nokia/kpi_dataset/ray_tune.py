@@ -93,7 +93,6 @@ output_time_step = 16
 
 def train(model, optimizer, train_loader, device=torch.device("cpu")):
     print("Start training this model")
-    print(model)
     loss_fn = torch.nn.MSELoss()
     model.train()
     total_step = len(train_loader)
@@ -125,8 +124,8 @@ def get_data_loaders(tx):
     df = pd.read_csv("/root/dingding/nokia/kpi_data/kpi_data_obfuscated.csv")
     dataset_train = AltranDataset(df, mode="train", tx=tx)
     dataset_valid = AltranDataset(df, mode="valid", tx=tx)
-    train_loader = DataLoader(dataset_train, batch_size=512, shuffle=True, num_workers=4)
-    valid_loader = DataLoader(dataset_valid, batch_size=1, num_workers=4)
+    train_loader = DataLoader(dataset_train, batch_size=512, shuffle=True, num_workers=8)
+    valid_loader = DataLoader(dataset_valid, batch_size=1, num_workers=8)
     return train_loader, valid_loader
 
 def train_altran(config):
@@ -155,7 +154,7 @@ def train_altran(config):
         tune.report(RMSE=rmse)
 
 if __name__ == "__main__":
-    ray.init(num_cpus=80, local_mode=True)
+    ray.init(num_cpus=56, local_mode=True)
     EPOCH_NUM = 1
 
     # for early stopping
@@ -170,12 +169,12 @@ if __name__ == "__main__":
         metric="RMSE",
         scheduler=sched,
         stop={
-            "training_iteration": 4 if smoke_test else 21
+            "training_iteration": 2 if smoke_test else 21
         },
         resources_per_trial={
             "cpu": 8
         },
-        num_samples= 1 if smoke_test else 1,
+        num_samples= 1 if smoke_test else 21,
         config={
             "lr": tune.choice([0.001, 0.003]),
             "dropout": tune.choice([0]),
@@ -184,8 +183,8 @@ if __name__ == "__main__":
             "lookback": tune.grid_search([80]),
         } if smoke_test else {
             "lr": tune.grid_search([0.001, 0.003]),
-            "dropout": tune.grid_search([0, 0.1]),
-            "hidden_size": tune.grid_search([48, 96, 128, 192, 256]),
+            "dropout": tune.grid_search([0.1]),
+            "hidden_size": tune.grid_search([48, 96, 128]),
             "kernal_size": tune.grid_search([3]),
             "lookback": tune.grid_search([48, 80, 96, 160, 192])
         })
